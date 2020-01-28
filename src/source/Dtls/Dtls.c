@@ -246,15 +246,17 @@ CleanUp:
 }
 
 STATUS createDtlsSession(PDtlsSessionCallbacks pDtlsSessionCallbacks, TIMER_QUEUE_HANDLE timerQueueHandle,
-        INT32 certificateBits, PRtcCertificate pRtcCertificates, UINT32 certCount, PDtlsSession* ppDtlsSession)
+        INT32 certificateBits, PRtcCertificate pRtcCertificates, PDtlsSession* ppDtlsSession)
 {
     ENTERS();
     STATUS retStatus = STATUS_SUCCESS;
     PDtlsSession pDtlsSession = NULL;
-    UINT32 i;
+    UINT32 i, certCount;
+    DtlsSessionCertificateInfo certInfos[MAX_RTCCONFIGURATION_CERTIFICATES];
+    MEMSET(certInfos, 0x00, SIZEOF(certInfos));
 
     CHK(ppDtlsSession != NULL, STATUS_NULL_ARG);
-    CHK_STATUS(dtlsValidateRtcCertificates(pRtcCertificates, certCount));
+    CHK_STATUS(dtlsValidateRtcCertificates(pRtcCertificates, &certCount));
 
     pDtlsSession = MEMCALLOC(SIZEOF(DtlsSession), 1);
     CHK(pDtlsSession != NULL, STATUS_NOT_ENOUGH_MEMORY);
@@ -270,28 +272,38 @@ STATUS createDtlsSession(PDtlsSessionCallbacks pDtlsSessionCallbacks, TIMER_QUEU
         certificateBits = GENERATED_CERTIFICATE_BITS;
     }
 
-    if (pRtcCertificates == NULL) {
-        CHK_STATUS(createCertificateAndKey(certificateBits, &pDtlsSession->certificates[0].pCert,
-                &pDtlsSession->certificates[0].pKey));
-        pDtlsSession->certificates[0].created = TRUE;
+    if (certCount == 0) {
+        CHK_STATUS(createCertificateAndKey(certificateBits, &certInfos[0].pCert,
+                &certInfos[0].pKey));
+        certInfos[0].created = TRUE;
         pDtlsSession->certificateCount = 1;
     } else {
         pDtlsSession->certificateCount = certCount;
         for (i = 0; i < certCount; i++) {
-            pDtlsSession->certificates[i].pCert = (X509*) pRtcCertificates[i].pCertificate;
-            pDtlsSession->certificates[i].pKey = (EVP_PKEY*) pRtcCertificates[i].pPrivateKey;
-            pDtlsSession->certificates[i].created = FALSE;
+            certInfos[i].pCert = (X509*) pRtcCertificates[i].pCertificate;
+            certInfos[i].pKey = (EVP_PKEY*) pRtcCertificates[i].pPrivateKey;
+            certInfos[i].created = FALSE;
         }
     }
 
-    CHK_STATUS(createSslCtx(pDtlsSession->certificates, pDtlsSession->certificateCount, &pDtlsSession->pSslCtx));
+    CHK_STATUS(createSslCtx(certInfos, pDtlsSession->certificateCount, &pDtlsSession->pSslCtx));
     CHK_STATUS(createSsl(pDtlsSession->pSslCtx, &pDtlsSession->pSsl));
+
+    // Generate and store the certificate fingerprints
+    CHK_STATUS(dtlsGenerateCertificateFingerprints(pDtlsSession, certInfos));
 
     *ppDtlsSession = pDtlsSession;
 
 CleanUp:
 
     CHK_LOG_ERR_NV(retStatus);
+
+    // Free the created cert and private key
+    for (i = 0; i < MAX_RTCCONFIGURATION_CERTIFICATES; i++) {
+        if (certInfos[i].created) {
+            freeCertificateAndKey(&certInfos[i].pCert, &certInfos[i].pKey);
+        }
+    }
 
     if (STATUS_FAILED(retStatus)) {
         freeDtlsSession(&pDtlsSession);
@@ -301,16 +313,36 @@ CleanUp:
     return retStatus;
 }
 
-STATUS dtlsValidateRtcCertificates(PRtcCertificate pRtcCertificates, UINT32 certCount)
+STATUS dtlsValidateRtcCertificates(PRtcCertificate pRtcCertificates, PUINT32 pCount)
 {
     ENTERS();
     STATUS retStatus = STATUS_SUCCESS;
     UINT32 i;
 
-    CHK(pRtcCertificates == NULL || (certCount > 0 && certCount <= MAX_RTCCONFIGURATION_CERTIFICATES), STATUS_SSL_INVALID_CERTIFICATE_COUNT);
+    CHK(pRtcCertificates != NULL && pCount != NULL, retStatus);
 
-    for (i = 0; i < certCount && pRtcCertificates != NULL; i++) {
-        CHK(pRtcCertificates[i].pCertificate != NULL, STATUS_SSL_INVALID_CERTIFICATE_BITS);
+    for (i = 0, *pCount = 0; pRtcCertificates[i].pCertificate != NULL && i < MAX_RTCCONFIGURATION_CERTIFICATES; i++) {
+        CHK(pRtcCertificates[i].privateKeySize == 0 || pRtcCertificates[i].pPrivateKey != NULL, STATUS_SSL_INVALID_CERTIFICATE_BITS);
+    }
+
+    *pCount = i;
+
+CleanUp:
+
+    LEAVES();
+    return retStatus;
+}
+
+STATUS dtlsGenerateCertificateFingerprints(PDtlsSession pDtlsSession, PDtlsSessionCertificateInfo pDtlsSessionCertificateInfo)
+{
+    ENTERS();
+    STATUS retStatus = STATUS_SUCCESS;
+    UINT32 i;
+
+    CHK(pDtlsSession != NULL && pDtlsSessionCertificateInfo != NULL, STATUS_NULL_ARG);
+
+    for (i = 0; i < pDtlsSession->certificateCount; i++) {
+        CHK_STATUS(dtlsCertificateFingerprint(pDtlsSessionCertificateInfo[i].pCert, pDtlsSession->certFingerprints[i]));
     }
 
 CleanUp:
@@ -372,12 +404,6 @@ STATUS freeDtlsSession(PDtlsSession* ppDtlsSession)
 
     if (pDtlsSession->timerId != UINT32_MAX) {
         timerQueueCancelTimer(pDtlsSession->timerQueueHandle, pDtlsSession->timerId, (UINT64) pDtlsSession);
-    }
-
-    for (i = 0; i < pDtlsSession->certificateCount; i++) {
-        if (pDtlsSession->certificates[i].created) {
-            freeCertificateAndKey(&pDtlsSession->certificates[i].pCert, &pDtlsSession->certificates[i].pKey);
-        }
     }
 
     if (pDtlsSession->pSsl != NULL) {
@@ -578,7 +604,7 @@ CleanUp:
 }
 
 
-STATUS dtlsSessionGenerateLocalCertificateFingerprint(PDtlsSession pDtlsSession, PCHAR pBuff, UINT32 buffLen)
+STATUS dtlsSessionGetLocalCertificateFingerprint(PDtlsSession pDtlsSession, PCHAR pBuff, UINT32 buffLen)
 {
     UNUSED_PARAM(buffLen);
     ENTERS();
@@ -586,12 +612,13 @@ STATUS dtlsSessionGenerateLocalCertificateFingerprint(PDtlsSession pDtlsSession,
     BOOL locked = FALSE;
 
     CHK(pDtlsSession != NULL && pBuff != NULL, STATUS_NULL_ARG);
+    CHK(buffLen >= CERTIFICATE_FINGERPRINT_LENGTH, STATUS_INVALID_ARG_LEN);
 
     MUTEX_LOCK(pDtlsSession->sslLock);
     locked = TRUE;
 
     // Use the 0th certificate for now
-    CHK_STATUS(dtlsCertificateFingerprint(pDtlsSession->certificates[0].pCert, pBuff));
+    MEMCPY(pBuff, pDtlsSession->certFingerprints[0], CERTIFICATE_FINGERPRINT_LENGTH * SIZEOF(CHAR));
 
 CleanUp:
     if (locked) {

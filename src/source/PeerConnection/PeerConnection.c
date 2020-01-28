@@ -468,8 +468,7 @@ STATUS createPeerConnection(PRtcConfiguration pConfiguration, PRtcPeerConnection
     dtlsSessionCallbacks.outboundPacketFn = onDtlsOutboundPacket;
     CHK_STATUS(createDtlsSession(&dtlsSessionCallbacks, pKvsPeerConnection->timerQueueHandle,
             pConfiguration->kvsRtcConfiguration.generatedCertificateBits,
-            pConfiguration->certificates, pConfiguration->certificateCount,
-            &(pKvsPeerConnection->pDtlsSession)));
+            pConfiguration->certificates, &pKvsPeerConnection->pDtlsSession));
 
     CHK_STATUS(hashTableCreateWithParams(CODEC_HASH_TABLE_BUCKET_COUNT, CODEC_HASH_TABLE_BUCKET_LENGTH, &pKvsPeerConnection->pCodecTable));
     CHK_STATUS(hashTableCreateWithParams(CODEC_HASH_TABLE_BUCKET_COUNT, CODEC_HASH_TABLE_BUCKET_LENGTH, &pKvsPeerConnection->pDataChannels));

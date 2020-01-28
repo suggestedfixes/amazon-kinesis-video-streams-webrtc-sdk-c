@@ -686,13 +686,17 @@ typedef struct {
     // If this value is absent, then a default set of certificates is generated
     // for each RtcPeerConnection.
     //
+    // An absent value is determined by the certificate pointing to NULL
+    //
+    // Doc: https://www.w3.org/TR/webrtc/#dom-rtcconfiguration-certificates
+    //
     // !!!!!!!!!! IMPORTANT !!!!!!!!!!
-    // It is recommended to rotate the certificates often - preferrably for every peer connection
-    // to avoid a compromised client weakening the security of the new connections
-    PRtcCertificate certificates; // Max MAX_RTCCONFIGURATION_CERTIFICATES certificates
-
-    // The count of RtcCertificates if certificates is not NULL.
-    UINT32 certificateCount;
+    // It is recommended to rotate the certificates often - preferably for every peer connection
+    // to avoid a compromised client weakening the security of the new connections.
+    //
+    // NOTE: The certificates, if specified, can be freed after the peer connection create call
+    //
+    RtcCertificate certificates[MAX_RTCCONFIGURATION_CERTIFICATES];
 
     // servers available to be used by ICE, such as STUN and TURN servers.
     RtcIceServer iceServers[MAX_ICE_SERVERS_COUNT];

@@ -62,7 +62,7 @@ typedef struct {
 
 typedef struct {
     SSL_CTX *pSslCtx;
-    DtlsSessionCertificateInfo certificates[MAX_RTCCONFIGURATION_CERTIFICATES];
+    CHAR certFingerprints[MAX_RTCCONFIGURATION_CERTIFICATES][CERTIFICATE_FINGERPRINT_LENGTH + 1];
     UINT32 certificateCount;
     DtlsSessionCallbacks dtlsSessionCallbacks;
     TIMER_QUEUE_HANDLE timerQueueHandle;
@@ -79,21 +79,22 @@ typedef struct {
 STATUS createCertificateAndKey(INT32, X509 **ppCert, EVP_PKEY **ppPkey);
 STATUS freeCertificateAndKey(X509 **ppCert, EVP_PKEY **ppPkey);
 
-STATUS createDtlsSession(PDtlsSessionCallbacks, TIMER_QUEUE_HANDLE, INT32, PRtcCertificate, UINT32, PDtlsSession*);
+STATUS createDtlsSession(PDtlsSessionCallbacks, TIMER_QUEUE_HANDLE, INT32, PRtcCertificate, PDtlsSession*);
 STATUS freeDtlsSession(PDtlsSession*);
 
 STATUS createSslCtx(PDtlsSessionCertificateInfo, UINT32, SSL_CTX**);
 
-STATUS dtlsValidateRtcCertificates(PRtcCertificate, UINT32);
+STATUS dtlsValidateRtcCertificates(PRtcCertificate, PUINT32);
 STATUS dtlsSessionStart(PDtlsSession, BOOL);
 STATUS dtlsSessionProcessPacket(PDtlsSession, PBYTE, PINT32);
 STATUS dtlsSessionIsInitFinished(PDtlsSession, PBOOL);
 STATUS dtlsSessionPopulateKeyingMaterial(PDtlsSession, PDtlsKeyingMaterial);
-STATUS dtlsSessionGenerateLocalCertificateFingerprint(PDtlsSession, PCHAR, UINT32);
+STATUS dtlsSessionGetLocalCertificateFingerprint(PDtlsSession, PCHAR, UINT32);
 STATUS dtlsSessionVerifyRemoteCertificateFingerprint(PDtlsSession, PCHAR);
 STATUS dtlsSessionPutApplicationData(PDtlsSession, PBYTE, INT32);
 STATUS dtlsCheckOutgoingDataBuffer(PDtlsSession);
 STATUS dtlsCertificateFingerprint(X509*, PCHAR);
+STATUS dtlsGenerateCertificateFingerprints(PDtlsSession, PDtlsSessionCertificateInfo);
 
 #ifdef  __cplusplus
 }

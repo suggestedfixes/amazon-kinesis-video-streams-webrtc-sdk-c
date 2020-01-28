@@ -51,40 +51,37 @@ TEST_F(PeerConnectionApiTest, suppliedCertificatesVariation)
 {
     RtcConfiguration configuration;
     PRtcPeerConnection pRtcPeerConnection;
-    RtcCertificate certificates[MAX_RTCCONFIGURATION_CERTIFICATES + 1];
-    UINT32 i;
-
-    // Mock some certificates
-    for (i = 0; i < ARRAY_SIZE(certificates); i++) {
-        certificates->pCertificate = (PBYTE) 1;
-        certificates->pPrivateKey = (PBYTE) 2;
-        certificates->certificateSize = 100;
-        certificates->privateKeySize = 200;
-    }
 
     MEMSET(&configuration, 0x00, SIZEOF(RtcConfiguration));
     configuration.iceTransportPolicy = ICE_TRANSPORT_POLICY_RELAY;
 
-    // Max certs
-    configuration.certificates = certificates;
-    configuration.certificateCount = MAX_RTCCONFIGURATION_CERTIFICATES + 1;
-    EXPECT_EQ(STATUS_SSL_INVALID_CERTIFICATE_COUNT, createPeerConnection(&configuration, &pRtcPeerConnection));
-
-    // No certs
-    configuration.certificates = certificates;
-    configuration.certificateCount = 0;
-    EXPECT_EQ(STATUS_SSL_INVALID_CERTIFICATE_COUNT, createPeerConnection(&configuration, &pRtcPeerConnection));
-
-    // Cert bit is NULL
-    certificates[2].pCertificate = NULL;
-    configuration.certificates = certificates;
-    configuration.certificateCount = MAX_RTCCONFIGURATION_CERTIFICATES;
+    // Private key is null but the size is not zero
+    configuration.certificates[0].pCertificate = (PBYTE) 1;
+    configuration.certificates[0].certificateSize = 0;
+    configuration.certificates[0].pPrivateKey = NULL;
+    configuration.certificates[0].privateKeySize = 1;
     EXPECT_EQ(STATUS_SSL_INVALID_CERTIFICATE_BITS, createPeerConnection(&configuration, &pRtcPeerConnection));
-    certificates[2].pCertificate = (PBYTE) 3;
 
-    // Certs are null but count is not. Should generate cert OK
-    configuration.certificates = NULL;
-    configuration.certificateCount = MAX_RTCCONFIGURATION_CERTIFICATES;
+    // Private key is null but the size is not zero with specified size for the cert
+    configuration.certificates[0].pCertificate = (PBYTE) 1;
+    configuration.certificates[0].certificateSize = 100;
+    configuration.certificates[0].pPrivateKey = NULL;
+    configuration.certificates[0].privateKeySize = 1;
+    EXPECT_EQ(STATUS_SSL_INVALID_CERTIFICATE_BITS, createPeerConnection(&configuration, &pRtcPeerConnection));
+
+    // Bad private key size later in the chain that should be ignored
+    configuration.certificates[0].pCertificate = NULL;
+    configuration.certificates[0].certificateSize = 0;
+    configuration.certificates[0].pPrivateKey = NULL;
+    configuration.certificates[0].privateKeySize = 1;
+    EXPECT_EQ(STATUS_SUCCESS, createPeerConnection(&configuration, &pRtcPeerConnection));
+    EXPECT_EQ(STATUS_SUCCESS, freePeerConnection(&pRtcPeerConnection));
+
+    // Bad private key size later in the chain with cert size not zero that should be ignored
+    configuration.certificates[0].pCertificate = NULL;
+    configuration.certificates[0].certificateSize = 100;
+    configuration.certificates[0].pPrivateKey = NULL;
+    configuration.certificates[0].privateKeySize = 1;
     EXPECT_EQ(STATUS_SUCCESS, createPeerConnection(&configuration, &pRtcPeerConnection));
     EXPECT_EQ(STATUS_SUCCESS, freePeerConnection(&pRtcPeerConnection));
 }

@@ -32,7 +32,6 @@ TEST_F(PeerConnectionFunctionalityTest, connectTwoPeersWithPresetCerts)
     EVP_PKEY* pAnswerKey = NULL;
     CHAR offerCertFingerprint[CERTIFICATE_FINGERPRINT_LENGTH];
     CHAR answerCertFingerprint[CERTIFICATE_FINGERPRINT_LENGTH];
-    RtcCertificate offerCertificates, answerCertificates;
 
     // Generate offer cert
     ASSERT_EQ(STATUS_SUCCESS, createCertificateAndKey(GENERATED_CERTIFICATE_BITS, &pOfferCert, &pOfferKey));
@@ -42,34 +41,29 @@ TEST_F(PeerConnectionFunctionalityTest, connectTwoPeersWithPresetCerts)
     ASSERT_EQ(STATUS_SUCCESS, createCertificateAndKey(GENERATED_CERTIFICATE_BITS, &pAnswerCert, &pAnswerKey));
     ASSERT_EQ(STATUS_SUCCESS, dtlsCertificateFingerprint(pAnswerCert, answerCertFingerprint));
 
-    offerCertificates.pCertificate = (PBYTE) pOfferCert;
-    offerCertificates.certificateSize = 0;
-    offerCertificates.pPrivateKey = (PBYTE) pOfferKey;
-    offerCertificates.privateKeySize = 0;
-
-    answerCertificates.pCertificate = (PBYTE) pAnswerCert;
-    answerCertificates.certificateSize = 0;
-    answerCertificates.pPrivateKey = (PBYTE) pAnswerKey;
-    answerCertificates.privateKeySize = 0;
-
     MEMSET(&offerConfig, 0x00, SIZEOF(RtcConfiguration));
-    offerConfig.certificateCount = 1;
-    offerConfig.certificates = &offerCertificates;
+    offerConfig.certificates[0].pCertificate = (PBYTE) pOfferCert;
+    offerConfig.certificates[0].certificateSize = 0;
+    offerConfig.certificates[0].pPrivateKey = (PBYTE) pOfferKey;
+    offerConfig.certificates[0].privateKeySize = 0;
 
     MEMSET(&answerConfig, 0x00, SIZEOF(RtcConfiguration));
-    answerConfig.certificateCount = 1;
-    answerConfig.certificates = &answerCertificates;
+    answerConfig.certificates[0].pCertificate = (PBYTE) pAnswerCert;
+    answerConfig.certificates[0].certificateSize = 0;
+    answerConfig.certificates[0].pPrivateKey = (PBYTE) pAnswerKey;
+    answerConfig.certificates[0].privateKeySize = 0;
 
     EXPECT_EQ(STATUS_SUCCESS, createPeerConnection(&offerConfig, &offerPc));
     EXPECT_EQ(STATUS_SUCCESS, createPeerConnection(&answerConfig, &answerPc));
+
+    // Should be fine to free right after create peer connection
+    freeCertificateAndKey(&pOfferCert, &pOfferKey);
+    freeCertificateAndKey(&pAnswerCert, &pAnswerKey);
 
     EXPECT_EQ(TRUE, connectTwoPeers(offerPc, answerPc, offerCertFingerprint, answerCertFingerprint));
 
     freePeerConnection(&offerPc);
     freePeerConnection(&answerPc);
-
-    freeCertificateAndKey(&pOfferCert, &pOfferKey);
-    freeCertificateAndKey(&pAnswerCert, &pAnswerKey);
 }
 
 // Assert that two PeerConnections with forced TURN can connect to each other and go to connected
