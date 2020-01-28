@@ -47,6 +47,48 @@ TEST_F(PeerConnectionApiTest, serializeSessionDescriptionInit)
     EXPECT_STREQ(sessionDescriptionJSON, "{\"type\": \"offer\", \"sdp\": \"KVS\\r\\nWebRTC\\r\\nSDP\\r\\nValue\\r\\n\"}");
 }
 
+TEST_F(PeerConnectionApiTest, suppliedCertificatesVariation)
+{
+    RtcConfiguration configuration;
+    PRtcPeerConnection pRtcPeerConnection;
+    RtcCertificate certificates[MAX_RTCCONFIGURATION_CERTIFICATES + 1];
+    UINT32 i;
+
+    // Mock some certificates
+    for (i = 0; i < ARRAY_SIZE(certificates); i++) {
+        certificates->pCertificate = (PBYTE) 1;
+        certificates->pPrivateKey = (PBYTE) 2;
+        certificates->certificateSize = 100;
+        certificates->privateKeySize = 200;
+    }
+
+    MEMSET(&configuration, 0x00, SIZEOF(RtcConfiguration));
+    configuration.iceTransportPolicy = ICE_TRANSPORT_POLICY_RELAY;
+
+    // Max certs
+    configuration.certificates = certificates;
+    configuration.certificateCount = MAX_RTCCONFIGURATION_CERTIFICATES + 1;
+    EXPECT_EQ(STATUS_SSL_INVALID_CERTIFICATE_COUNT, createPeerConnection(&configuration, &pRtcPeerConnection));
+
+    // No certs
+    configuration.certificates = certificates;
+    configuration.certificateCount = 0;
+    EXPECT_EQ(STATUS_SSL_INVALID_CERTIFICATE_COUNT, createPeerConnection(&configuration, &pRtcPeerConnection));
+
+    // Cert bit is NULL
+    certificates[2].pCertificate = NULL;
+    configuration.certificates = certificates;
+    configuration.certificateCount = MAX_RTCCONFIGURATION_CERTIFICATES;
+    EXPECT_EQ(STATUS_SSL_INVALID_CERTIFICATE_BITS, createPeerConnection(&configuration, &pRtcPeerConnection));
+    certificates[2].pCertificate = (PBYTE) 3;
+
+    // Certs are null but count is not. Should generate cert OK
+    configuration.certificates = NULL;
+    configuration.certificateCount = MAX_RTCCONFIGURATION_CERTIFICATES;
+    EXPECT_EQ(STATUS_SUCCESS, createPeerConnection(&configuration, &pRtcPeerConnection));
+    EXPECT_EQ(STATUS_SUCCESS, freePeerConnection(&pRtcPeerConnection));
+}
+
 TEST_F(PeerConnectionApiTest, deserializeSessionDescriptionInit)
 {
     RtcSessionDescriptionInit rtcSessionDescriptionInit;

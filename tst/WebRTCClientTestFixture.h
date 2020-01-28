@@ -193,7 +193,8 @@ public:
         return retStatus;
     }
 
-    bool connectTwoPeers(PRtcPeerConnection offerPc, PRtcPeerConnection answerPc);
+    bool connectTwoPeers(PRtcPeerConnection offerPc, PRtcPeerConnection answerPc,
+            PCHAR pOfferCertFingerprint = NULL, PCHAR pAnswerCertFingerprint = NULL);
 
 protected:
 

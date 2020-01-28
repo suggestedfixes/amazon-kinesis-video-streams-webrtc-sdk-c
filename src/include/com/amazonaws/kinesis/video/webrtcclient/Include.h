@@ -109,6 +109,8 @@ extern "C" {
 #define STATUS_SSL_REMOTE_CERTIFICATE_VERIFICATION_FAILED                           STATUS_DTLS_BASE + 0x00000003
 #define STATUS_SSL_PACKET_BEFORE_DTLS_READY                                         STATUS_DTLS_BASE + 0x00000004
 #define STATUS_SSL_UNKNOWN_SRTP_PROFILE                                             STATUS_DTLS_BASE + 0x00000005
+#define STATUS_SSL_INVALID_CERTIFICATE_COUNT                                        STATUS_DTLS_BASE + 0x00000006
+#define STATUS_SSL_INVALID_CERTIFICATE_BITS                                         STATUS_DTLS_BASE + 0x00000007
 
 //
 // ICE related errors starting from 0x5a000000
@@ -317,6 +319,12 @@ extern "C" {
  * Max message description string length
  */
 #define MAX_MESSAGE_DESCRIPTION_LEN                                                 1024
+
+
+/**
+ * Max certificates an RtcConfiguration can accept
+ */
+#define MAX_RTCCONFIGURATION_CERTIFICATES                                           3
 
 /**
  * Max ice servers for a RtcPeerConnection
@@ -609,6 +617,21 @@ typedef struct {
 } RtcIceServer, *PRtcIceServer;
 
 /**
+ * Specifies the certificate and the private key used by the certificate.
+ *
+ * The Certificates are in the form of x509 certs
+ */
+typedef struct {
+    // The certificate bits and the size
+    PBYTE pCertificate;
+    UINT32 certificateSize;
+
+    // The private key bits and the size in bytes
+    PBYTE pPrivateKey;
+    UINT32 privateKeySize;
+} RtcCertificate, *PRtcCertificate;
+
+/**
  *  KvsRtcConfiguration is a collection of non-standard extensions to RTCConfiguration
  *  these exist to serve use cases that currently aren't being served by the W3C standard
  *
@@ -654,6 +677,22 @@ typedef struct {
 typedef struct {
     // Indicates which candidates the ICE Agent is allowed to use.
     ICE_TRANSPORT_POLICY iceTransportPolicy;
+
+    // Set of certificates that the RtcPeerConnection uses to authenticate.
+    // Although any given DTLS connection will use only one certificate, this
+    // attribute allows the caller to provide multiple certificates that support
+    // different algorithms.
+    //
+    // If this value is absent, then a default set of certificates is generated
+    // for each RtcPeerConnection.
+    //
+    // !!!!!!!!!! IMPORTANT !!!!!!!!!!
+    // It is recommended to rotate the certificates often - preferrably for every peer connection
+    // to avoid a compromised client weakening the security of the new connections
+    PRtcCertificate certificates; // Max MAX_RTCCONFIGURATION_CERTIFICATES certificates
+
+    // The count of RtcCertificates if certificates is not NULL.
+    UINT32 certificateCount;
 
     // servers available to be used by ICE, such as STUN and TURN servers.
     RtcIceServer iceServers[MAX_ICE_SERVERS_COUNT];
