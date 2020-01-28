@@ -555,7 +555,7 @@ STATUS freePeerConnection(PRtcPeerConnection *ppPeerConnection)
     }
 
     // Free DataChannels
-    CHK_STATUS(hashTableIterateEntries(pKvsPeerConnection->pDataChannels, 0, freeHashEntry));
+    CHK_LOG_ERR_NV(hashTableIterateEntries(pKvsPeerConnection->pDataChannels, 0, freeHashEntry));
     CHK_LOG_ERR_NV(hashTableFree(pKvsPeerConnection->pDataChannels));
 
     // free rest of structs

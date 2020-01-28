@@ -394,7 +394,6 @@ STATUS freeDtlsSession(PDtlsSession* ppDtlsSession)
     ENTERS();
     STATUS retStatus = STATUS_SUCCESS;
     PDtlsSession pDtlsSession;
-    UINT32 i;
 
     CHK(ppDtlsSession != NULL, STATUS_NULL_ARG);
 
