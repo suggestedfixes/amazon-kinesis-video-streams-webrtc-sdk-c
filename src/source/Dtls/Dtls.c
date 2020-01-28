@@ -136,7 +136,7 @@ STATUS createSslCtx(PDtlsSessionCertificateInfo pCertificates, UINT32 certCount,
     UINT32 i;
 
     CHK(pCertificates != NULL && ppSslCtx != NULL, STATUS_NULL_ARG);
-    CHK(certCount > 0 && certCount <= MAX_RTCCONFIGURATION_CERTIFICATES, STATUS_SSL_INVALID_CERTIFICATE_COUNT);
+    CHK(certCount > 0, STATUS_INTERNAL_ERROR);
 
     #if (OPENSSL_VERSION_NUMBER < 0x10002000L)
         EC_KEY *ecdh = NULL;

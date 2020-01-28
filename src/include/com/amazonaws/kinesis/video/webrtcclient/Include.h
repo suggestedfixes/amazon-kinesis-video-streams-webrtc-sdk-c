@@ -109,8 +109,7 @@ extern "C" {
 #define STATUS_SSL_REMOTE_CERTIFICATE_VERIFICATION_FAILED                           STATUS_DTLS_BASE + 0x00000003
 #define STATUS_SSL_PACKET_BEFORE_DTLS_READY                                         STATUS_DTLS_BASE + 0x00000004
 #define STATUS_SSL_UNKNOWN_SRTP_PROFILE                                             STATUS_DTLS_BASE + 0x00000005
-#define STATUS_SSL_INVALID_CERTIFICATE_COUNT                                        STATUS_DTLS_BASE + 0x00000006
-#define STATUS_SSL_INVALID_CERTIFICATE_BITS                                         STATUS_DTLS_BASE + 0x00000007
+#define STATUS_SSL_INVALID_CERTIFICATE_BITS                                         STATUS_DTLS_BASE + 0x00000006
 
 //
 // ICE related errors starting from 0x5a000000
