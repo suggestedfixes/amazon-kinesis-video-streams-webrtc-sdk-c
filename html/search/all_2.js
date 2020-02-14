@@ -1,0 +1,24 @@
+var searchData=
+[
+  ['cachingendpoint_4',['cachingEndpoint',['../struct_channel_info.html#aca8b7032e16dadcfe52fec292b07cb7c',1,'ChannelInfo']]],
+  ['candidate_5',['candidate',['../struct_rtc_ice_candidate_init.html#a8f7a6f41f0eb15ee05fe66dcf314614a',1,'RtcIceCandidateInit']]],
+  ['channel_5finfo_5fcurrent_5fversion_6',['CHANNEL_INFO_CURRENT_VERSION',['../_include_8h.html#ae7a5b2883ec07248e6c913777cabfbab',1,'Include.h']]],
+  ['channelarn_7',['channelArn',['../struct_signaling_channel_description.html#adf0269db30e1cc2cb23b55fe3bb18408',1,'SignalingChannelDescription']]],
+  ['channelinfo_8',['ChannelInfo',['../struct_channel_info.html',1,'']]],
+  ['channelname_9',['channelName',['../struct_signaling_channel_description.html#ae55794025b5a3a53ad3ec79f12676f09',1,'SignalingChannelDescription']]],
+  ['channelroletype_10',['channelRoleType',['../struct_channel_info.html#acc498395a65985dca82ce2e49a2c6e73',1,'ChannelInfo']]],
+  ['channelstatus_11',['channelStatus',['../struct_signaling_channel_description.html#a987b31f9de2a6265d6a9bdc677ed2c5f',1,'SignalingChannelDescription']]],
+  ['channeltype_12',['channelType',['../struct_channel_info.html#a520316c48a0898343e670e427cbdcbbf',1,'ChannelInfo::channelType()'],['../struct_signaling_channel_description.html#a9c80bb618c25e2aa6b1febcce5280690',1,'SignalingChannelDescription::channelType()']]],
+  ['chk_5flog_5ferr_5fnv_13',['CHK_LOG_ERR_NV',['../_include_8h.html#a39137beaf587d297125406df4bd48b55',1,'Include.h']]],
+  ['clientid_14',['clientId',['../struct_signaling_client_info.html#aff0f2c0e3bf9f8b3e4135852f1d5ec9b',1,'SignalingClientInfo']]],
+  ['codec_15',['codec',['../struct_rtc_media_stream_track.html#a5ecb0a5e7fa90e50d893437388568445',1,'RtcMediaStreamTrack']]],
+  ['correlationid_16',['correlationId',['../struct_signaling_message.html#a37206d0443a7b7e6c7fdecc1c160e4f5',1,'SignalingMessage']]],
+  ['createanswer_17',['createAnswer',['../_include_8h.html#a7dc5ad4eb5cc7e000396547279108d9b',1,'Include.h']]],
+  ['createdatachannel_18',['createDataChannel',['../_include_8h.html#a52388bddbaae20b12fdac9bb3b596211',1,'Include.h']]],
+  ['createoffer_19',['createOffer',['../_include_8h.html#a1779d268b0993835d80f0948281e2274',1,'Include.h']]],
+  ['createpeerconnection_20',['createPeerConnection',['../_include_8h.html#ada972c66438c7e7c82e1db0cfe2b2640',1,'Include.h']]],
+  ['createsignalingclientsync_21',['createSignalingClientSync',['../_include_8h.html#a375ddffe8376298cdaafe63799b53b1e',1,'Include.h']]],
+  ['creationtime_22',['creationTime',['../struct_signaling_channel_description.html#aa3642b61b95cdb0a9ab999ca28f997f3',1,'SignalingChannelDescription']]],
+  ['credential_23',['credential',['../struct_rtc_ice_server.html#a21307c9ea8b4e5af58b85fcede581bf9',1,'RtcIceServer']]],
+  ['customdata_24',['customData',['../struct_signaling_client_callbacks.html#ac1108b3f0f014f820025b0eaf345ffc4',1,'SignalingClientCallbacks']]]
+];

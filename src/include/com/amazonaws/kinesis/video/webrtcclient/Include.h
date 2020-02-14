@@ -588,7 +588,7 @@ typedef struct {
  * https://www.w3.org/TR/webrtc/#rtcrtpreceiver-interface
  */
 typedef struct {
-    RtcMediaStreamTrack track;
+    RtcMediaStreamTrack track; //!< RtcMediaStreamTrack track
 } RtcRtpReceiver, *PRtcRtpReceiver;
 
 /**
