@@ -106,6 +106,7 @@ typedef struct {
 
 typedef struct {
     volatile ATOMIC_BOOL agentStartGathering;
+    volatile ATOMIC_BOOL remoteCredentialReceived;
 
     CHAR localUsername[MAX_ICE_CONFIG_USER_NAME_LEN + 1];
     CHAR localPassword[MAX_ICE_CONFIG_CREDENTIAL_LEN + 1];
@@ -120,7 +121,6 @@ typedef struct {
     PDoubleList iceCandidatePairs;
 
     PConnectionListener pConnectionListener;
-    volatile BOOL agentStarted;
     BOOL isControlling;
     UINT64 tieBreaker;
 
@@ -198,7 +198,7 @@ STATUS freeIceAgent(PIceAgent*);
 STATUS iceAgentAddRemoteCandidate(PIceAgent, PCHAR);
 
 /**
- * Initiates stun commuinication with remote candidates.
+ * Initiates stun communication with remote candidates.
  *
  * @param - PIceAgent - IN - IceAgent object
  * @param - PCHAR - IN - remote username
@@ -268,7 +268,7 @@ STATUS iceAgentValidateKvsRtcConfig(PKvsRtcConfiguration);
 // Incoming data handling functions
 STATUS newRelayCandidateHandler(UINT64, PKvsIpAddress, PSocketConnection);
 STATUS incomingDataHandler(UINT64, PSocketConnection, PBYTE, UINT32, PKvsIpAddress, PKvsIpAddress);
-STATUS handleStunPacket(PIceAgent, PBYTE, UINT32, PSocketConnection, PKvsIpAddress, PKvsIpAddress, PStunPacket*, PBOOL);
+STATUS handleStunPacket(PIceAgent, PBYTE, UINT32, PSocketConnection, PKvsIpAddress, PKvsIpAddress);
 
 // IceCandidate functions
 STATUS updateCandidateAddress(PIceCandidate, PKvsIpAddress);
@@ -279,17 +279,28 @@ STATUS findCandidateWithSocketConnection(PSocketConnection, PDoubleList, PIceCan
 STATUS createIceCandidatePairs(PIceAgent, PIceCandidate, BOOL);
 STATUS freeIceCandidatePair(PIceCandidatePair*);
 STATUS insertIceCandidatePair(PDoubleList, PIceCandidatePair);
-STATUS findIceCandidatePairWithLocalConnectionHandleAndRemoteAddr(PIceAgent, PSocketConnection, PKvsIpAddress, BOOL, PIceCandidatePair*);
+STATUS findIceCandidatePairWithLocalSocketConnectionAndRemoteAddr(PIceAgent, PSocketConnection, PKvsIpAddress, BOOL, PIceCandidatePair*);
 STATUS pruneUnconnectedIceCandidatePair(PIceAgent);
 STATUS iceCandidatePairCheckConnection(PStunPacket, PIceAgent, PIceCandidatePair);
 
+STATUS iceAgentSendSrflxCandidateRequest(PIceAgent);
+STATUS iceAgentCheckCandidatePairConnection(PIceAgent);
+STATUS iceAgentSendCandidateNomination(PIceAgent);
+STATUS iceAgentSendStunPacket(PStunPacket, PBYTE, UINT32, PIceAgent, PIceCandidate, PKvsIpAddress);
+
+STATUS iceAgentInitHostCandidate(PIceAgent);
+STATUS iceAgentInitSrflxCandidate(PIceAgent);
+STATUS iceAgentInitRelayCandidate(PIceAgent);
+
+STATUS iceAgentGatheringStateSetup(PIceAgent);
+STATUS iceAgentCheckConnectionStateSetup(PIceAgent);
+STATUS iceAgentConnectedStateSetup(PIceAgent);
+STATUS iceAgentNominatingStateSetup(PIceAgent);
+STATUS iceAgentReadyStateSetup(PIceAgent);
+
 // timer callbacks. timer callbacks are interlocked by time queue lock.
-STATUS iceAgentStateNewTimerCallback(UINT32, UINT64, UINT64);
-STATUS iceAgentStateGatheringTimerCallback(UINT32, UINT64, UINT64);
-STATUS iceAgentStateCheckConnectionTimerCallback(UINT32, UINT64, UINT64);
+STATUS iceAgentStateTransitionTimerCallback(UINT32, UINT64, UINT64);
 STATUS iceAgentSendKeepAliveTimerCallback(UINT32, UINT64, UINT64);
-STATUS iceAgentStateNominatingTimerCallback(UINT32, UINT64, UINT64);
-STATUS iceAgentStateReadyTimerCallback(UINT32, UINT64, UINT64);
 
 STATUS iceAgentNominateCandidatePair(PIceAgent);
 STATUS iceAgentCheckPeerReflexiveCandidate(PIceAgent, PKvsIpAddress, UINT32, BOOL, PSocketConnection);

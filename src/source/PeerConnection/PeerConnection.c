@@ -158,8 +158,6 @@ VOID onInboundPacket(UINT64 customData, PBYTE buff, UINT32 buffLen)
 CleanUp:
 
     CHK_LOG_ERR_NV(retStatus);
-
-    return;
 }
 
 STATUS sendPacketToRtpReceiver(PKvsPeerConnection pKvsPeerConnection, PBYTE pBuffer, UINT32 bufferLen)
@@ -266,6 +264,8 @@ VOID onIceConnectionStateChange(UINT64 customData, UINT64 connectionState)
             break;
 
         case ICE_AGENT_STATE_GATHERING:
+            // explicit fall-through
+        case ICE_AGENT_STATE_WAITING_REMOTE_CREDENTIAL:
             newConnectionState = RTC_PEER_CONNECTION_STATE_NEW;
             break;
 

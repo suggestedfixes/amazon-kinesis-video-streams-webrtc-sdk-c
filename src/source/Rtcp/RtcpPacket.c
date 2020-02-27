@@ -15,13 +15,14 @@ STATUS setRtcpPacketFromBytes(PBYTE pRawPacket, UINT32 pRawPacketsLen, PRtcpPack
     // We don't assert exact length since this may be a compound packet, it
     // is the callers responsibility to parse subsequent entries
     packetLen = getInt16(*(PUINT16) (pRawPacket + RTCP_PACKET_LEN_OFFSET));
-    CHK((packetLen + 1) * RTCP_PACKET_LEN_WORD_SIZE <= pRawPacketsLen, STATUS_SUCCESS);
+    CHK((packetLen + 1) * RTCP_PACKET_LEN_WORD_SIZE <= pRawPacketsLen, STATUS_RTCP_INPUT_PARTIAL_PACKET);
 
     pRtcpPacket->header.version = (pRawPacket[0] >> VERSION_SHIFT) & VERSION_MASK;
     CHK(pRtcpPacket->header.version == RTCP_PACKET_VERSION_VAL, STATUS_RTCP_INPUT_PACKET_INVALID_VERSION);
 
     pRtcpPacket->header.receptionReportCount = pRawPacket[0] & RTCP_PACKET_RRC_BITMASK;
     pRtcpPacket->header.packetType = pRawPacket[RTCP_PACKET_TYPE_OFFSET];
+    pRtcpPacket->header.packetLength = packetLen;
 
     pRtcpPacket->payloadLength = packetLen * RTCP_PACKET_LEN_WORD_SIZE;
     pRtcpPacket->payload = pRawPacket + RTCP_PACKET_LEN_WORD_SIZE;
@@ -73,6 +74,69 @@ STATUS rtcpNackListGet(PBYTE pPayload, UINT32 payloadLen, PUINT32 pSenderSsrc, P
 CleanUp:
     if (STATUS_SUCCEEDED(retStatus)) {
         *pSequenceNumberListLen = sequenceNumberCount;
+    }
+
+    LEAVES();
+    return retStatus;
+}
+
+// Assert that Application Layer Feedback payload is REMB
+STATUS isRembPacket(PBYTE pPayload, UINT32 payloadLen)
+{
+    STATUS retStatus = STATUS_SUCCESS;
+    const BYTE rembUniqueIdentifier[] =  {0x52, 0x45, 0x4d, 0x42};
+
+    CHK(pPayload != NULL, STATUS_NULL_ARG);
+    CHK(payloadLen >= RTCP_PACKET_REMB_MIN_SIZE, STATUS_RTCP_INPUT_REMB_TOO_SMALL);
+    CHK(MEMCMP(rembUniqueIdentifier, pPayload + RTCP_PACKET_REMB_IDENTIFIER_OFFSET, SIZEOF(rembUniqueIdentifier)) == 0, STATUS_RTCP_INPUT_REMB_INVALID);
+
+CleanUp:
+
+    LEAVES();
+    return retStatus;
+}
+
+
+/**
+ * Get values from RTCP Payload
+ *
+ * Parameters:
+ *     pPayload         - REMB Payload
+ *     payloadLen       - Total length of payload
+ *     pMaximumBitRate  - REMB Value
+ *     pSsrcList        - buffer to write list of SSRCes into.
+ *     pSsrcListLen     - destination PUINT32 to store the count of SSRCes from the incoming REMB.
+ */
+STATUS rembValueGet(PBYTE pPayload, UINT32 payloadLen, PDOUBLE pMaximumBitRate, PUINT32 pSsrcList, PUINT8 pSsrcListLen)
+{
+    ENTERS();
+    STATUS retStatus = STATUS_SUCCESS;
+    UINT8 ssrcListLen = 0, exponent = 0;
+    UINT32 mantissa = 0, i;
+    DOUBLE maximumBitRate = 0;
+
+    CHK(pPayload != NULL && pMaximumBitRate != NULL && pSsrcListLen != NULL, STATUS_NULL_ARG);
+    CHK(payloadLen >= RTCP_PACKET_REMB_MIN_SIZE, STATUS_RTCP_INPUT_REMB_TOO_SMALL);
+
+    MEMCPY(&mantissa, pPayload + RTCP_PACKET_REMB_IDENTIFIER_OFFSET + SIZEOF(UINT32), SIZEOF(UINT32));
+    mantissa = htonl(mantissa);
+    mantissa &= RTCP_PACKET_REMB_MANTISSA_BITMASK;
+
+    exponent = pPayload[RTCP_PACKET_REMB_IDENTIFIER_OFFSET + SIZEOF(UINT32) + SIZEOF(BYTE)] >> 2;
+    maximumBitRate = ldexp(mantissa, exponent);
+
+    // Only populate SSRC list if caller requests
+    ssrcListLen = pPayload[RTCP_PACKET_REMB_IDENTIFIER_OFFSET + SIZEOF(UINT32)];
+    CHK(payloadLen >= RTCP_PACKET_REMB_MIN_SIZE + (ssrcListLen * SIZEOF(UINT32)), STATUS_RTCP_INPUT_REMB_INVALID);
+
+    for (i = 0; i < ssrcListLen; i++) {
+        pSsrcList[i] = getInt32(*(PUINT32) (pPayload + RTCP_PACKET_REMB_IDENTIFIER_OFFSET + 8 + (i * SIZEOF(UINT32))));
+    }
+
+CleanUp:
+    if (STATUS_SUCCEEDED(retStatus)) {
+        *pSsrcListLen = ssrcListLen;
+        *pMaximumBitRate = ldexp(mantissa, exponent);
     }
 
     LEAVES();

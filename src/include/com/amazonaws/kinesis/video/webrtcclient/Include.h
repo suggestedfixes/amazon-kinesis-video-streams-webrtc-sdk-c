@@ -99,6 +99,9 @@ extern "C" {
 #define STATUS_SECURE_SOCKET_READ_FAILED                                            STATUS_NETWORKING_BASE + 0x00000020
 #define STATUS_SOCKET_CONNECTION_NOT_READY_TO_SEND                                  STATUS_NETWORKING_BASE + 0x00000021
 #define STATUS_SOCKET_CONNECTION_CLOSED_ALREADY                                     STATUS_NETWORKING_BASE + 0x00000022
+#define STATUS_SOCKET_SET_SEND_BUFFER_SIZE_FAILED                                   STATUS_NETWORKING_BASE + 0x00000023
+#define STATUS_GET_SOCKET_FLAG_FAILED                                               STATUS_NETWORKING_BASE + 0x00000024
+#define STATUS_SET_SOCKET_FLAG_FAILED                                               STATUS_NETWORKING_BASE + 0x00000025
 
 //
 // DTLS related errors starting from 0x59000000
@@ -134,14 +137,7 @@ extern "C" {
 #define STATUS_ICE_CANDIDATE_MISSING_CANDIDATE                                      STATUS_ICE_BASE  + 0x00000012
 #define STATUS_ICE_FAILED_TO_NOMINATE_CANDIDATE_PAIR                                STATUS_ICE_BASE  + 0x00000013
 #define STATUS_ICE_MAX_REMOTE_CANDIDATE_COUNT_EXCEEDED                              STATUS_ICE_BASE  + 0x00000014
-#define STATUS_ICE_INVALID_GATHERING_STATE                                          STATUS_ICE_BASE  + 0x00000015
-#define STATUS_ICE_INVALID_CHECK_CONNECTION_STATE                                   STATUS_ICE_BASE  + 0x00000016
-#define STATUS_ICE_INVALID_CONNECTED_STATE                                          STATUS_ICE_BASE  + 0x00000017
-#define STATUS_ICE_INVALID_NOMINATING_STATE                                         STATUS_ICE_BASE  + 0x00000018
-#define STATUS_ICE_INVALID_READY_STATE                                              STATUS_ICE_BASE  + 0x00000019
-#define STATUS_ICE_INVALID_DISCONNECTED_STATE                                       STATUS_ICE_BASE  + 0x0000001a
-#define STATUS_ICE_INVALID_FAILED_STATE                                             STATUS_ICE_BASE  + 0x0000001b
-#define STATUS_ICE_INVALID_NEW_STATE                                                STATUS_ICE_BASE  + 0x0000001c
+#define STATUS_ICE_INVALID_STATE                                                	STATUS_ICE_BASE  + 0x0000001c
 #define STATUS_ICE_NO_LOCAL_HOST_CANDIDATE_AVAILABLE                                STATUS_ICE_BASE  + 0x0000001d
 #define STATUS_ICE_NO_NOMINATED_VALID_CANDIDATE_PAIR_AVAILABLE                      STATUS_ICE_BASE  + 0x0000001e
 #define STATUS_TURN_CONNECTION_NO_HOST_INTERFACE_FOUND                              STATUS_ICE_BASE  + 0x0000001f
@@ -248,6 +244,9 @@ extern "C" {
 #define STATUS_RTCP_INPUT_PACKET_LEN_MISMATCH                                       STATUS_RTCP_BASE + 0x00000003
 #define STATUS_RTCP_INPUT_NACK_LIST_INVALID                                         STATUS_RTCP_BASE + 0x00000004
 #define STATUS_RTCP_INPUT_SSRC_INVALID                                              STATUS_RTCP_BASE + 0x00000005
+#define STATUS_RTCP_INPUT_PARTIAL_PACKET                                            STATUS_RTCP_BASE + 0x00000006
+#define STATUS_RTCP_INPUT_REMB_TOO_SMALL                                            STATUS_RTCP_BASE + 0x00000007
+#define STATUS_RTCP_INPUT_REMB_INVALID                                              STATUS_RTCP_BASE + 0x00000008
 
 //
 // RollingBuffer related errors starting from 0x61000000
@@ -435,6 +434,16 @@ extern "C" {
 typedef VOID (*RtcOnFrame)(UINT64, PFrame);
 
 /*
+ * RtcOnBandwidthEstimation is fired everytime a bandwidth estimation value
+ * is computed. This will be fired for sender or receiver side estimation
+ *
+ * RtcOnBandwidthEstimation is a KVS specific method
+ *
+ */
+typedef VOID (*RtcOnBandwidthEstimation)(UINT64, DOUBLE);
+
+
+/*
  * RtcOnMessage is fired when a message is received for the DataChannel
  *
  * https://www.w3.org/TR/webrtc/#dom-rtcdatachannel-onmessage
@@ -463,6 +472,12 @@ typedef VOID (*RtcOnDataChannel)(UINT64, struct __RtcDataChannel*);
  * https://www.w3.org/TR/webrtc/#dom-rtcpeerconnection-ondatachannel
  */
 typedef VOID (*RtcOnIceCandidate)(UINT64, PCHAR);
+
+/*
+ * IceSetInterfaceFilterFunc is fired when a callback function to filter network interfaces is assigned.
+ * The callback function is expected to check for specific interface names to be whitelisted/blacklisted
+ */
+typedef BOOL (*IceSetInterfaceFilterFunc) (UINT64, PCHAR);
 
 /*
  * https://www.w3.org/TR/webrtc/#rtcpeerconnectionstate-enum
@@ -666,6 +681,11 @@ typedef struct {
     // If unset GENERATED_CERTIFICATE_BITS will be used
     INT32 generatedCertificateBits;
 
+    // Socket send buffer len. Item larger then this size will get dropped. Use system default if 0.
+    UINT32 sendBufSize;
+
+    UINT64 filterCustomData;
+    IceSetInterfaceFilterFunc iceSetInterfaceFilterFunc;
 } KvsRtcConfiguration, *PKvsRtcConfiguration;
 
 /**
@@ -1282,6 +1302,17 @@ PUBLIC_API STATUS addTransceiver(PRtcPeerConnection, PRtcMediaStreamTrack, PRtcR
  * @return - STATUS code of the execution
  */
 PUBLIC_API STATUS transceiverOnFrame(PRtcRtpTransceiver, UINT64, RtcOnFrame);
+
+/**
+ * Set a callback for bandwidth estimation results
+ *
+ * @param - PRtcRtpTransceiver* - IN - RtcRtpTransceiver struct
+ * @param - UINT64 - IN - User customData that will be passed along when RtcOnBandwidthEstimation is called
+ * @param - RtcOnBandwidthEstimation - IN - User RtcOnBandwidthEstimation callback
+ *
+ * @return - STATUS code of the execution
+ */
+PUBLIC_API STATUS transceiverOnBandwidthEstimation(PRtcRtpTransceiver, UINT64, RtcOnBandwidthEstimation);
 
 /*
  * freeTransceiver frees the previously created transceiver object

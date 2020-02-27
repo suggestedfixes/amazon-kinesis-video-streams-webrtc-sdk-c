@@ -4,11 +4,12 @@
 #define LOG_CLASS "Network"
 #include "../Include_i.h"
 
-STATUS getLocalhostIpAddresses(PKvsIpAddress destIpList, PUINT32 pDestIpListLen)
+STATUS getLocalhostIpAddresses(PKvsIpAddress destIpList, PUINT32 pDestIpListLen, IceSetInterfaceFilterFunc filter, UINT64 customData)
 {
     ENTERS();
     STATUS retStatus = STATUS_SUCCESS;
     UINT32 ipCount = 0, destIpListLen;
+    BOOL filterSet = TRUE;
 
     struct ifaddrs *ifaddr = NULL, *ifa = NULL;
     struct sockaddr_in *pIpv4Addr = NULL;
@@ -28,21 +29,35 @@ STATUS getLocalhostIpAddresses(PKvsIpAddress destIpList, PUINT32 pDestIpListLen)
             // mark vpn interface
             destIpList[ipCount].isPointToPoint = ((ifa->ifa_flags & IFF_POINTOPOINT) != 0);
 
-            if (ifa->ifa_addr->sa_family == AF_INET) {
-                destIpList[ipCount].family = KVS_IP_FAMILY_TYPE_IPV4;
-                destIpList[ipCount].port = 0;
-                pIpv4Addr = (struct sockaddr_in *) ifa->ifa_addr;
-                MEMCPY(destIpList[ipCount].address, &pIpv4Addr->sin_addr, IPV4_ADDRESS_LENGTH);
+            if(filter != NULL) {
+                DLOGI("Callback set to allow network interface filtering");
+                // The callback evaluates to a FALSE if the application is interested in black listing an interface
+                if(filter(customData, ifa->ifa_name) == FALSE) {
+                    filterSet = FALSE;
+                } else {
+                    filterSet = TRUE;
+                }
+             }
 
-            } else {
-                destIpList[ipCount].family = KVS_IP_FAMILY_TYPE_IPV6;
-                destIpList[ipCount].port = 0;
-                pIpv6Addr = (struct sockaddr_in6 *) ifa->ifa_addr;
-                MEMCPY(destIpList[ipCount].address, &pIpv6Addr->sin6_addr, IPV6_ADDRESS_LENGTH);
+            // If filter is set, ensure the details are collected for the interface
+            if(filterSet == TRUE) {
+                 if (ifa->ifa_addr->sa_family == AF_INET) {
+                    destIpList[ipCount].family = KVS_IP_FAMILY_TYPE_IPV4;
+                    destIpList[ipCount].port = 0;
+                    pIpv4Addr = (struct sockaddr_in *) ifa->ifa_addr;
+                    MEMCPY(destIpList[ipCount].address, &pIpv4Addr->sin_addr, IPV4_ADDRESS_LENGTH);
+
+                 } else {
+                    destIpList[ipCount].family = KVS_IP_FAMILY_TYPE_IPV6;
+                    destIpList[ipCount].port = 0;
+                    pIpv6Addr = (struct sockaddr_in6 *) ifa->ifa_addr;
+                    MEMCPY(destIpList[ipCount].address, &pIpv6Addr->sin6_addr, IPV6_ADDRESS_LENGTH);
+
+                 }
+
+                 // in case of overfilling destIpList
+                 ipCount++;
             }
-
-            // in case of overfilling destIpList
-            ipCount++;
         }
     }
 
@@ -60,13 +75,13 @@ CleanUp:
     return retStatus;
 }
 
-STATUS createSocket(PKvsIpAddress pHostIpAddress, PKvsIpAddress pPeerAddress, KVS_SOCKET_PROTOCOL protocol, PINT32 pSockFd)
+STATUS createSocket(PKvsIpAddress pHostIpAddress, PKvsIpAddress pPeerAddress, KVS_SOCKET_PROTOCOL protocol, UINT32 sendBufSize, PINT32 pSockFd)
 {
     STATUS retStatus = STATUS_SUCCESS;
 
     struct sockaddr_in ipv4Addr, ipv4PeerAddr;
     struct sockaddr_in6 ipv6Addr, ipv6PeerAddr;
-    INT32 sockfd, sockType;
+    INT32 sockfd, sockType, flags, retVal;
     struct sockaddr *sockAddr = NULL, *peerSockAddr = NULL;
     socklen_t addrLen;
     CHAR ipAddrStr[KVS_IP_ADDRESS_STRING_BUFFER_LEN];
@@ -81,6 +96,11 @@ STATUS createSocket(PKvsIpAddress pHostIpAddress, PKvsIpAddress pPeerAddress, KV
     if (sockfd == -1) {
         DLOGW("socket() failed to create socket with errno %s", strerror(errno));
         CHK(FALSE, STATUS_CREATE_UDP_SOCKET_FAILED);
+    }
+
+    if (sendBufSize > 0 && setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &sendBufSize, SIZEOF(sendBufSize)) < 0) {
+        DLOGW("setsockopt() failed with errno %s", strerror(errno));
+        CHK(FALSE, STATUS_SOCKET_SET_SEND_BUFFER_SIZE_FAILED);
     }
 
     if (pHostIpAddress->family == KVS_IP_FAMILY_TYPE_IPV4) {
@@ -133,13 +153,16 @@ STATUS createSocket(PKvsIpAddress pHostIpAddress, PKvsIpAddress pPeerAddress, KV
     pHostIpAddress->port = (UINT16) pHostIpAddress->family == KVS_IP_FAMILY_TYPE_IPV4 ? ipv4Addr.sin_port : ipv6Addr.sin6_port;
     *pSockFd = (INT32) sockfd;
 
+    // Set the non-blocking mode for the socket
+    flags = fcntl(sockfd, F_GETFL, 0);
+    CHK_ERR(flags >= 0, STATUS_GET_SOCKET_FLAG_FAILED, "Failed to get the socket flags with system error %s", strerror(errno));
+    CHK_ERR(0 <= fcntl(sockfd, F_SETFL, flags | O_NONBLOCK), STATUS_SET_SOCKET_FLAG_FAILED, "Failed to Set the socket flags with system error %s", strerror(errno));
+
     // done at this point for UDP
     CHK(protocol == KVS_SOCKET_PROTOCOL_TCP, retStatus);
 
-    if (connect(sockfd, peerSockAddr, addrLen) < 0) {
-        DLOGW("connect() failed with errno %s", strerror(errno));
-        CHK(FALSE, STATUS_SOCKET_CONNECT_FAILED);
-    }
+    retVal = connect(sockfd, peerSockAddr, addrLen);
+    CHK_ERR(retVal >= 0 || errno == EINPROGRESS, STATUS_SOCKET_CONNECT_FAILED, "connect() failed with errno %s", strerror(errno));
 
 CleanUp:
 
