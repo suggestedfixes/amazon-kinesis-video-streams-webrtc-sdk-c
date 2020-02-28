@@ -119,7 +119,7 @@ VOID onInboundPacket(UINT64 customData, PBYTE buff, UINT32 buffLen)
                   |       B < 2   -+--> forward to STUN
                   +----------------+
     */
-    if (buff[0] >= 20 && buff[0] <= 63) {
+    if (buff[0] > 19 && buff[0] < 64) {
         dtlsSessionProcessPacket(pKvsPeerConnection->pDtlsSession, buff, &signedBuffLen);
 
         if (signedBuffLen > 0) {
@@ -137,7 +137,7 @@ VOID onInboundPacket(UINT64 customData, PBYTE buff, UINT32 buffLen)
             }
         }
 
-    } else if ((buff[0] >= 127 && buff[0] <= 192) && (pKvsPeerConnection->pSrtpSession != NULL)) {
+    } else if ((buff[0] > 127 && buff[0] < 192) && (pKvsPeerConnection->pSrtpSession != NULL)) {
         if (buff[1] >= 192 && buff[1] <= 223) {
             if (STATUS_FAILED(retStatus = decryptSrtcpPacket(pKvsPeerConnection->pSrtpSession, buff, &signedBuffLen))) {
                 DLOGW("decryptSrtcpPacket failed with 0x%08x", retStatus);
@@ -828,6 +828,10 @@ STATUS addTransceiver(PRtcPeerConnection pPeerConnection, PRtcMediaStreamTrack p
     DepayRtpPayloadFunc depayFunc;
     UINT32 clockRate = 0;
     UINT32 ssrc = (UINT32) RAND(), rtxSsrc = (UINT32) RAND();
+    RTC_RTP_TRANSCEIVER_DIRECTION direction = RTC_RTP_TRANSCEIVER_DIRECTION_SENDRECV;
+    if(pRtcRtpTransceiverInit != NULL) {
+        direction = pRtcRtpTransceiverInit->direction;
+    }
 
     CHK(pKvsPeerConnection != NULL, STATUS_NULL_ARG);
 
@@ -858,8 +862,8 @@ STATUS addTransceiver(PRtcPeerConnection pPeerConnection, PRtcMediaStreamTrack p
     }
 
     //TODO: Add ssrc duplicate detection here not only relying on RAND()
-    CHK_STATUS(createKvsRtpTransceiver(RTC_RTP_TRANSCEIVER_DIRECTION_SENDRECV, pKvsPeerConnection, ssrc,
-            rtxSsrc, pRtcMediaStreamTrack, NULL, pRtcMediaStreamTrack->codec, &pKvsRtpTransceiver));
+    CHK_STATUS(createKvsRtpTransceiver(direction, pKvsPeerConnection, ssrc,
+                        rtxSsrc, pRtcMediaStreamTrack, NULL, pRtcMediaStreamTrack->codec, &pKvsRtpTransceiver));
     CHK_STATUS(createJitterBuffer(onFrameReadyFunc, onFrameDroppedFunc, depayFunc, DEFAULT_JITTER_BUFFER_MAX_LATENCY,
                                   clockRate, (UINT64) pKvsRtpTransceiver, &pJitterBuffer));
     CHK_STATUS(kvsRtpTransceiverSetJitterBuffer(pKvsRtpTransceiver, pJitterBuffer));
