@@ -2,12 +2,12 @@
 
 extern PSampleConfiguration gSampleConfiguration;
 
-INT32 main(INT32 argc, CHAR *argv[])
+int32_t main(int32_t argc, char *argv[])
 {
     STATUS retStatus = STATUS_SUCCESS;
     SignalingClientCallbacks signalingClientCallbacks;
     SignalingClientInfo clientInfo;
-    UINT32 frameSize;
+    uint32_t frameSize;
     PSampleConfiguration pSampleConfiguration = NULL;
 
     signal(SIGINT, sigintHandler);
@@ -15,11 +15,16 @@ INT32 main(INT32 argc, CHAR *argv[])
     // do tricketIce by default
     printf("[KVS Master] Using trickleICE by default\n");
 
-    CHK_STATUS(createSampleConfiguration(argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME,
-            SIGNALING_CHANNEL_ROLE_TYPE_MASTER,
-            TRUE,
-            TRUE,
-            &pSampleConfiguration));
+    retStatus = createSampleConfiguration(argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME,
+                                          SIGNALING_CHANNEL_ROLE_TYPE_MASTER,
+                                          TRUE,
+                                          TRUE,
+                                          &pSampleConfiguration);
+    if(retStatus != STATUS_SUCCESS) {
+        printf("[KVS Master] Sample configuration creation failed\n");
+        goto CleanUp;
+    }
+
     printf("[KVS Master] Created signaling channel %s\n", (argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME));
 
     // Set the audio and video handlers
@@ -32,34 +37,53 @@ INT32 main(INT32 argc, CHAR *argv[])
 
     // Check if the samples are present
 
-    CHK_STATUS(readFrameFromDisk(NULL, &frameSize, "./h264SampleFrames/frame-001.h264"));
+    retStatus = readFrameFromDisk(NULL, &frameSize, "./h264SampleFrames/frame-001.h264");
+    if(retStatus != STATUS_SUCCESS) {
+        printf("[KVS Master] Video sample read failed\n");
+        goto CleanUp;
+    }
     printf("[KVS Master] Checked sample video frame availability....available\n");
 
-    CHK_STATUS(readFrameFromDisk(NULL, &frameSize, "./opusSampleFrames/sample-001.opus"));
+    retStatus = readFrameFromDisk(NULL, &frameSize, "./opusSampleFrames/sample-001.opus");
+    if(retStatus != STATUS_SUCCESS) {
+        printf("[KVS Master] Audio sample read failed\n");
+        goto CleanUp;
+    }
     printf("[KVS Master] Checked sample audio frame availability....available\n");
 
+    retStatus = initKvsWebRtc();
     // Initialize KVS WebRTC. This must be done before anything else, and must only be done once.
-    CHK_STATUS(initKvsWebRtc());
+    if(retStatus != STATUS_SUCCESS) {
+        printf("[KVS Master] WebRTC init failed\n");
+        goto CleanUp;
+    }
     printf("[KVS Master] KVS WebRTC initialization completed successfully\n");
 
     signalingClientCallbacks.version = SIGNALING_CLIENT_CALLBACKS_CURRENT_VERSION;
     signalingClientCallbacks.messageReceivedFn = masterMessageReceived;
     signalingClientCallbacks.errorReportFn = NULL;
     signalingClientCallbacks.stateChangeFn = signalingClientStateChanged;
-    signalingClientCallbacks.customData = (UINT64) pSampleConfiguration;
+    signalingClientCallbacks.customData = (unsigned long long) pSampleConfiguration;
 
     clientInfo.version = SIGNALING_CLIENT_INFO_CURRENT_VERSION;
-    STRCPY(clientInfo.clientId, SAMPLE_MASTER_CLIENT_ID);
+    strcpy(clientInfo.clientId, SAMPLE_MASTER_CLIENT_ID);
 
-    CHK_STATUS(createSignalingClientSync(&clientInfo,
-            &pSampleConfiguration->channelInfo,
-            &signalingClientCallbacks,
-            pSampleConfiguration->pCredentialProvider,
-            &pSampleConfiguration->signalingClientHandle));
+    retStatus = createSignalingClientSync(&clientInfo, &pSampleConfiguration->channelInfo,
+                                          &signalingClientCallbacks, pSampleConfiguration->pCredentialProvider,
+                                          &pSampleConfiguration->signalingClientHandle);
+    if(retStatus != STATUS_SUCCESS) {
+        printf("[KVS Master] Signaling client Sync creation failed\n");
+        goto CleanUp;
+
+    }
     printf("[KVS Master] Signaling client created successfully\n");
 
     // Enable the processing of the messages
-    CHK_STATUS(signalingClientConnectSync(pSampleConfiguration->signalingClientHandle));
+    retStatus = signalingClientConnectSync(pSampleConfiguration->signalingClientHandle);
+    if(retStatus != STATUS_SUCCESS) {
+        printf("[KVS Master] Signaling client connection to socket failed\n");
+        goto CleanUp;
+    }
     printf("[KVS Master] Signaling client connection to socket established\n");
 
     gSampleConfiguration = pSampleConfiguration;
@@ -68,83 +92,127 @@ INT32 main(INT32 argc, CHAR *argv[])
             (argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME));
 
     // Checking for termination
-    CHK_STATUS(sessionCleanupWait(pSampleConfiguration));
+    retStatus = sessionCleanupWait(pSampleConfiguration);
+    if(retStatus != STATUS_SUCCESS) {
+        printf("[KVS Master] Streaming session termination failed\n");
+        goto CleanUp;
+    }
 
     printf("[KVS Master] Streaming session terminated\n");
 
 CleanUp:
     printf("[KVS Master] Cleaning up....\n");
-    CHK_LOG_ERR_NV(retStatus);
+    if(retStatus != STATUS_SUCCESS) {
+        DLOGE("operation returned status code: 0x%08x", retStatus);
+    }
 
     if (pSampleConfiguration != NULL) {
         // Kick of the termination sequence
         ATOMIC_STORE_BOOL(&pSampleConfiguration->appTerminateFlag, TRUE);
 
         // Join the threads
-        if (IS_VALID_TID_VALUE(pSampleConfiguration->videoSenderTid)) {
-            THREAD_JOIN(pSampleConfiguration->videoSenderTid, NULL);
+        if (pSampleConfiguration->videoSenderTid != (uint64_t) NULL) {
+            if(pthread_join((pthread_t) pSampleConfiguration->videoSenderTid, NULL) != 0) {
+                printf("Video Sender thread failed to join...%s (code %d)\n", strerror(errno), errno);
+            }
         }
 
-        if (IS_VALID_TID_VALUE(pSampleConfiguration->audioSenderTid)) {
-            THREAD_JOIN(pSampleConfiguration->audioSenderTid, NULL);
+        if (pSampleConfiguration->audioSenderTid != (uint64_t) NULL) {
+            if(pthread_join((pthread_t) pSampleConfiguration->audioSenderTid, NULL) != 0) {
+                printf("Audio Sender thread failed to join...%s (code %d)\n", strerror(errno), errno);
+            }
         }
 
-        CHK_LOG_ERR_NV(freeSignalingClient(&pSampleConfiguration->signalingClientHandle));
-        CHK_LOG_ERR_NV(freeSampleConfiguration(&pSampleConfiguration));
+        retStatus = freeSignalingClient(&pSampleConfiguration->signalingClientHandle);
+        if(retStatus != STATUS_SUCCESS) {
+            DLOGE("operation returned status code: 0x%08x", retStatus);
+        }
+
+        retStatus = freeSampleConfiguration(&pSampleConfiguration);
+        if(retStatus != STATUS_SUCCESS) {
+            DLOGE("operation returned status code: 0x%08x", retStatus);
+        }
     }
     printf("[KVS Master] Cleanup done\n");
-    return (INT32) retStatus;
+    return (int32_t) retStatus;
 }
 
-STATUS readFrameFromDisk(PBYTE pFrame, PUINT32 pSize, PCHAR frameFilePath)
+STATUS readFrameFromDisk(uint8_t* pFrame, uint32_t* pSize, char* frameFilePath)
 {
     STATUS retStatus = STATUS_SUCCESS;
-    UINT64 size = 0;
+    unsigned long long size = 0;
 
-    CHK(pSize != NULL, STATUS_NULL_ARG);
+    if(pSize == NULL) {
+       retStatus = STATUS_NULL_ARG;
+       goto CleanUp;
+    }
+
     size = *pSize;
 
     // Get the size and read into frame
-    CHK_STATUS(readFile(frameFilePath, TRUE, pFrame, &size));
+    retStatus = readFile(frameFilePath, TRUE, pFrame, &size);
+    if(retStatus != STATUS_SUCCESS) {
+        printf("[KVS Master] Frame read failed\n");
+        goto CleanUp;
+    }
 
 CleanUp:
 
     if (pSize != NULL) {
-        *pSize = (UINT32) size;
+        *pSize = (uint32_t) size;
     }
 
     return retStatus;
 }
 
-PVOID sendVideoPackets(PVOID args)
+void* sendVideoPackets(void* args)
 {
     STATUS retStatus = STATUS_SUCCESS;
     PSampleConfiguration pSampleConfiguration = (PSampleConfiguration) args;
     Frame frame;
-    UINT32 fileIndex = 0, frameSize;
-    CHAR filePath[MAX_PATH_LEN + 1];
+    uint32_t fileIndex = 0, frameSize;
+    char filePath[MAX_PATH_LEN + 1];
     STATUS status;
-    UINT32 i;
+    uint32_t i;
 
-    CHK(pSampleConfiguration != NULL, STATUS_NULL_ARG);
+    if(pSampleConfiguration == NULL) {
+        retStatus = STATUS_NULL_ARG;
+        goto CleanUp;
+    }
 
     frame.presentationTs = 0;
 
     while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->appTerminateFlag)) {
         fileIndex = fileIndex % NUMBER_OF_H264_FRAME_FILES + 1;
-        SNPRINTF(filePath, MAX_PATH_LEN, "./h264SampleFrames/frame-%03d.h264", fileIndex);
-        CHK_STATUS(readFrameFromDisk(NULL, &frameSize, filePath));
+        snprintf(filePath, MAX_PATH_LEN, "./h264SampleFrames/frame-%03d.h264", fileIndex);
+
+        retStatus = readFrameFromDisk(NULL, &frameSize, filePath);
+        if(retStatus != STATUS_SUCCESS) {
+            printf("[KVS Master] Video frame read failed\n");
+            goto CleanUp;
+        }
 
         // Re-alloc if needed
         if (frameSize > pSampleConfiguration->videoBufferSize) {
-            CHK(NULL != (pSampleConfiguration->pVideoFrameBuffer = (PBYTE) MEMREALLOC(pSampleConfiguration->pVideoFrameBuffer, frameSize)), STATUS_NOT_ENOUGH_MEMORY);
+            pSampleConfiguration->pVideoFrameBuffer = (uint8_t*) MEMREALLOC(pSampleConfiguration->pVideoFrameBuffer, frameSize);
+            if(pSampleConfiguration->pVideoFrameBuffer == NULL)
+            {
+                printf("[KVS Master] Video frame Buffer reallocation failed\n");
+                retStatus = STATUS_NOT_ENOUGH_MEMORY;
+                goto CleanUp;
+            }
+
             pSampleConfiguration->videoBufferSize = frameSize;
         }
 
         frame.frameData = pSampleConfiguration->pVideoFrameBuffer;
         frame.size = frameSize;
 
-        CHK_STATUS(readFrameFromDisk(frame.frameData, &frameSize, filePath));
+        retStatus = readFrameFromDisk(frame.frameData, &frameSize, filePath);
+        if(retStatus != STATUS_SUCCESS) {
+            printf("[KVS Master] Video frame read failed\n");
+            goto CleanUp;
+        }
 
         frame.presentationTs += SAMPLE_VIDEO_FRAME_DURATION;
 
@@ -152,51 +220,69 @@ PVOID sendVideoPackets(PVOID args)
             ATOMIC_INCREMENT(&pSampleConfiguration->streamingSessionListReadingThreadCount);
             for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
                 status = writeFrame(pSampleConfiguration->sampleStreamingSessionList[i]->pVideoRtcRtpTransceiver, &frame);
-                if (STATUS_FAILED(status)) {
+                if (status != STATUS_SUCCESS) {
                     DLOGD("writeFrame failed with 0x%08x", status);
                 }
             }
             ATOMIC_DECREMENT(&pSampleConfiguration->streamingSessionListReadingThreadCount);
         }
-
-        THREAD_SLEEP(SAMPLE_VIDEO_FRAME_DURATION);
+        usleep(SAMPLE_VIDEO_FRAME_DURATION / HUNDREDS_OF_NANOS_IN_A_MICROSECOND);
     }
 
 CleanUp:
 
-    CHK_LOG_ERR_NV(retStatus);
-    return (PVOID) (ULONG_PTR) retStatus;
+    if(retStatus != STATUS_SUCCESS) {
+        DLOGE("operation returned status code: 0x%08x", retStatus);
+    }
+    return (void*) (unsigned long long) retStatus;
 }
 
-PVOID sendAudioPackets(PVOID args)
+void* sendAudioPackets(void* args)
 {
     STATUS retStatus = STATUS_SUCCESS;
     PSampleConfiguration pSampleConfiguration = (PSampleConfiguration) args;
     Frame frame;
-    UINT32 fileIndex = 0, frameSize;
-    CHAR filePath[MAX_PATH_LEN + 1];
-    UINT32 i;
+    uint32_t fileIndex = 0, frameSize;
+    char filePath[MAX_PATH_LEN + 1];
+    uint32_t i;
     STATUS status;
 
-    CHK(pSampleConfiguration != NULL, STATUS_NULL_ARG);
+    if(pSampleConfiguration == NULL)
+    {
+    	retStatus = STATUS_NULL_ARG;
+    	goto CleanUp;
+    }
 
     frame.presentationTs = 0;
 
     while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->appTerminateFlag)) {
         fileIndex = fileIndex % NUMBER_OF_OPUS_FRAME_FILES + 1;
-        SNPRINTF(filePath, MAX_PATH_LEN, "./opusSampleFrames/sample-%03d.opus", fileIndex);
-        CHK_STATUS(readFrameFromDisk(NULL, &frameSize, filePath));
+        snprintf(filePath, MAX_PATH_LEN, "./opusSampleFrames/sample-%03d.opus", fileIndex);
+
+        retStatus = readFrameFromDisk(NULL, &frameSize, filePath);
+        if(retStatus != STATUS_SUCCESS) {
+            printf("[KVS Master] Video frame read failed\n");
+            goto CleanUp;
+        }
 
         // Re-alloc if needed
         if (frameSize > pSampleConfiguration->audioBufferSize) {
-            CHK(NULL != (pSampleConfiguration->pAudioFrameBuffer = (PBYTE) MEMREALLOC(pSampleConfiguration->pAudioFrameBuffer, frameSize)), STATUS_NOT_ENOUGH_MEMORY);
-            pSampleConfiguration->audioBufferSize = frameSize;
+            pSampleConfiguration->pAudioFrameBuffer = (uint8_t*) realloc(pSampleConfiguration->pAudioFrameBuffer, frameSize);
+            if(pSampleConfiguration->pAudioFrameBuffer == NULL) {
+                printf("[KVS Master] Audio frame Buffer reallocation failed\n");
+                retStatus = STATUS_NOT_ENOUGH_MEMORY;
+                goto CleanUp;
+            }
         }
 
         frame.frameData = pSampleConfiguration->pAudioFrameBuffer;
         frame.size = frameSize;
 
-        CHK_STATUS(readFrameFromDisk(frame.frameData, &frameSize, filePath));
+        retStatus = readFrameFromDisk(frame.frameData, &frameSize, filePath);
+        if(retStatus != STATUS_SUCCESS) {
+            printf("[KVS Master] Video frame read failed\n");
+            goto CleanUp;
+        }
 
         frame.presentationTs += SAMPLE_AUDIO_FRAME_DURATION;
 
@@ -204,33 +290,44 @@ PVOID sendAudioPackets(PVOID args)
             ATOMIC_INCREMENT(&pSampleConfiguration->streamingSessionListReadingThreadCount);
             for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
                 status = writeFrame(pSampleConfiguration->sampleStreamingSessionList[i]->pAudioRtcRtpTransceiver, &frame);
-                if (STATUS_FAILED(status)) {
+                if (status != STATUS_SUCCESS) {
                     DLOGD("writeFrame failed with 0x%08x", status);
                 }
             }
             ATOMIC_DECREMENT(&pSampleConfiguration->streamingSessionListReadingThreadCount);
         }
-
-        THREAD_SLEEP(SAMPLE_AUDIO_FRAME_DURATION);
+        usleep(SAMPLE_AUDIO_FRAME_DURATION / HUNDREDS_OF_NANOS_IN_A_MICROSECOND);
     }
 
 CleanUp:
 
-    CHK_LOG_ERR_NV(retStatus);
-    return (PVOID) (ULONG_PTR) retStatus;
+    if(retStatus != STATUS_SUCCESS) {
+        DLOGE("operation returned status code: 0x%08x", retStatus);
+    }
+    return (void*) (unsigned long long) retStatus;
 }
 
-PVOID sampleReceiveAudioFrame(PVOID args)
+void* sampleReceiveAudioFrame(void* args)
 {
     STATUS retStatus = STATUS_SUCCESS;
     PSampleStreamingSession pSampleStreamingSession = (PSampleStreamingSession) args;
-    CHK(pSampleStreamingSession != NULL, STATUS_NULL_ARG);
+    if(pSampleStreamingSession == NULL) {
+           retStatus = STATUS_NULL_ARG;
+           goto CleanUp;
+    }
 
-    CHK_STATUS(transceiverOnFrame(pSampleStreamingSession->pAudioRtcRtpTransceiver,
-                       (UINT64) pSampleStreamingSession,
-                       sampleFrameHandler));
+    retStatus = transceiverOnFrame(pSampleStreamingSession->pAudioRtcRtpTransceiver,
+            (unsigned long long) pSampleStreamingSession,
+            sampleFrameHandler);
+    if(retStatus != STATUS_SUCCESS)
+    {
+        goto CleanUp;
+    }
+
 CleanUp:
 
-    CHK_LOG_ERR_NV(retStatus);
-    return (PVOID) (ULONG_PTR) retStatus;
+    if(retStatus != STATUS_SUCCESS) {
+        DLOGE("operation returned status code: 0x%08x", retStatus);
+    }
+    return (void*) (unsigned long long) retStatus;
 }
