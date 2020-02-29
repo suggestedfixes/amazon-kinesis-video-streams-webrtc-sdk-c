@@ -10,6 +10,7 @@ VOID sigintHandler(INT32 sigNum)
         ATOMIC_STORE_BOOL(&gSampleConfiguration->interrupted, TRUE);
         CVAR_BROADCAST(gSampleConfiguration->cvar);
     }
+    exit(0);
 }
 
 VOID onDataChannelMessage(UINT64 customData, BOOL isBinary, PBYTE pMessage, UINT32 pMessageLen)
