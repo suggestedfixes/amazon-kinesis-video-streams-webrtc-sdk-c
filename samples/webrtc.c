@@ -4,6 +4,14 @@
 
 extern PSampleConfiguration gSampleConfiguration;
 
+#define APP_RECEIVE_VIDEO_AUDIO  FALSE
+#define APP_DATA_TRANSFER        FALSE
+#define APP_TRICKLE_ICE          FALSE
+#define APP_TURN                 TRUE
+#define APP_GST_STRLEN           1024 
+
+CHAR appGstStr[APP_GST_STRLEN];
+
 GstFlowReturn on_new_sample(GstElement *sink, gpointer data, UINT64 trackid)
 {
     GstBuffer *buffer;
@@ -116,8 +124,11 @@ PVOID sendGstreamerAudioVideo(PVOID args)
     GstMessage *msg;
     GError *error = NULL;
     PSampleConfiguration pSampleConfiguration = (PSampleConfiguration) args;
+    PCHAR gstStr = NULL;
+    PCHAR rtspSrc = GETENV("APP_RTSP_SRC");
 
     CHK(pSampleConfiguration != NULL, STATUS_NULL_ARG);
+    CHK(rtspSrc != NULL, STATUS_NULL_ARG);
 
     // Use x264enc as its available on mac, pi, ubuntu and windows
     // mac pipeline fails if resolution is not 720p
@@ -127,23 +138,27 @@ PVOID sendGstreamerAudioVideo(PVOID args)
     //
     // For VP8
     // videotestsrc ! video/x-raw,width=1280,height=720,framerate=30/1 ! vp8enc error-resilient=partitions keyframe-max-dist=10 auto-alt-ref=true cpu-used=5 deadline=1 ! appsink sync=TRUE emit-signals=TRUE name=appsink-video
+    //
+    // For rtsp
+    // rtspsrc location=rtspsrc short-header=TRUE ! rtph264depay ! video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video
 
     switch (pSampleConfiguration->mediaType) {
         case SAMPLE_STREAMING_VIDEO_ONLY:
-            pipeline = gst_parse_launch(
-                    "autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=30/1 ! x264enc bframes=0 speed-preset=veryfast key-int-max=30 bitrate=512 ! "
-                    "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
-                    &error);
+            gstStr = "rtspsrc location=%s short-header=TRUE ! rtph264depay ! "
+                        "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video";
             break;
 
         case SAMPLE_STREAMING_AUDIO_VIDEO:
-            pipeline = gst_parse_launch(
-                    "autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=30/1 ! x264enc bframes=0 speed-preset=veryfast key-int-max=30 bitrate=512 ! "
-                            "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video autoaudiosrc ! "
-                            "queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio",
-                    &error);
+            gstStr = "rtspsrc location=%s short-header=TRUE ! rtph264depay ! "
+                            "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! h264parse ! appsink sync=TRUE emit-signals=TRUE name=appsink-video autoaudiosrc ! "
+                            "queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio";
             break;
     }
+
+    SPRINTF(appGstStr, gstStr, rtspSrc); 
+    printf("%s\n", appGstStr);
+
+    pipeline = gst_parse_launch(appGstStr,  &error);
 
     CHK_ERR(pipeline != NULL, STATUS_INTERNAL_ERROR, "Failed to launch gstreamer");
 
@@ -292,15 +307,22 @@ INT32 main(INT32 argc, CHAR *argv[])
 
     CHK_STATUS(createSampleConfiguration(argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME,
             SIGNALING_CHANNEL_ROLE_TYPE_MASTER,
-            TRUE,
-            TRUE,
+            APP_TRICKLE_ICE,
+            APP_TURN,
             &pSampleConfiguration));
     printf("[KVS GStreamer Master] Created signaling channel %s\n", (argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME));
 
     pSampleConfiguration->videoSource = sendGstreamerAudioVideo;
     pSampleConfiguration->mediaType = SAMPLE_STREAMING_VIDEO_ONLY;
-    pSampleConfiguration->receiveAudioVideoSource = receiveGstreamerAudioVideo;
-    pSampleConfiguration->onDataChannel = onDataChannel;
+
+    if (APP_RECEIVE_VIDEO_AUDIO) {
+        pSampleConfiguration->receiveAudioVideoSource = receiveGstreamerAudioVideo;
+    }
+
+    if (APP_DATA_TRANSFER) {
+        pSampleConfiguration->onDataChannel = onDataChannel;
+    }
+
     pSampleConfiguration->customData = (UINT64) pSampleConfiguration;
 
     /* Initialize GStreamer */
