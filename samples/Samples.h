@@ -14,7 +14,7 @@ extern "C" {
 
 #define NUMBER_OF_H264_FRAME_FILES                                              403
 #define NUMBER_OF_OPUS_FRAME_FILES                                              618
-#define DEFAULT_FPS_VALUE                                                       25
+#define DEFAULT_FPS_VALUE                                                       20
 #define DEFAULT_MAX_CONCURRENT_STREAMING_SESSION                                10
 
 #define SAMPLE_MASTER_CLIENT_ID                                                 "ProducerMaster"
@@ -25,6 +25,21 @@ extern "C" {
 #define SAMPLE_VIDEO_FRAME_DURATION                                             (HUNDREDS_OF_NANOS_IN_A_SECOND / DEFAULT_FPS_VALUE)
 
 #define CA_CERT_PEM_FILE_EXTENSION                                              ".pem"
+
+
+#define APP_RECEIVE_VIDEO_AUDIO  TRUE
+#define APP_DATA_TRANSFER        TRUE
+#define APP_TRICKLE_ICE          FALSE
+#define APP_TURN                 TRUE
+
+#define APP_GST_ERR_RECOVERY     FALSE
+#define APP_GST_EOS_EXIT         FALSE
+#define APP_GST_RTSPSRC_EXT      TRUE
+#define APP_GST_ENFORCE_TCP      TRUE
+#define APP_GST_RTSPSRC_AFT      TRUE
+
+#define APP_GST_STRLEN           1024 
+
 typedef enum {
     SAMPLE_STREAMING_VIDEO_ONLY,
     SAMPLE_STREAMING_AUDIO_VIDEO,
