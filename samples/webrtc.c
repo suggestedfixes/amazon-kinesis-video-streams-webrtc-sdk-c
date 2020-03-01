@@ -1,7 +1,7 @@
 #include <gst/app/gstappsink.h>
 #include <gst/gst.h>
 
-#include "Samples.h"
+#include "webrtc.h"
 
 extern PSampleConfiguration gSampleConfiguration;
 CHAR appGstStr[APP_GST_STRLEN];
