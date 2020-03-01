@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 #include <com/amazonaws/kinesis/video/webrtcclient/Include.h>
+#include "../src/source/Include_i.h"
 
 #define NUMBER_OF_H264_FRAME_FILES 403
 #define NUMBER_OF_OPUS_FRAME_FILES 618
@@ -34,8 +35,10 @@ extern "C" {
 #define APP_GST_RTSPSRC_EXT                 TRUE
 #define APP_GST_ENFORCE_TCP                 TRUE
 #define APP_GST_RTSPSRC_AFT                 TRUE
-
 #define APP_GST_STRLEN                      1024
+
+#define APP_PREGEN_CERTS                    TRUE
+#define APP_GENCERTBITS_OVERRIDE            1024
 
 typedef enum {
     SAMPLE_STREAMING_VIDEO_ONLY,
@@ -74,6 +77,8 @@ typedef struct {
     UINT64 customData;
     PSampleStreamingSession sampleStreamingSessionList[DEFAULT_MAX_CONCURRENT_STREAMING_SESSION];
     UINT32 streamingSessionCount;
+
+    RtcConfiguration rtcConfig;
 } SampleConfiguration, *PSampleConfiguration;
 
 typedef VOID (*StreamSessionShutdownCallback)(UINT64, PSampleStreamingSession);
@@ -124,6 +129,7 @@ VOID sampleBandwidthEstimationHandler(UINT64, DOUBLE);
 VOID onDataChannel(UINT64, PRtcDataChannel);
 VOID onConnectionStateChange(UINT64, RTC_PEER_CONNECTION_STATE);
 STATUS sessionCleanupWait(PSampleConfiguration);
+STATUS genCerts(PSampleConfiguration pConfig);
 
 #ifdef __cplusplus
 }

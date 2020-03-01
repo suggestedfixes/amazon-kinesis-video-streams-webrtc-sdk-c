@@ -495,6 +495,10 @@ INT32 main(INT32 argc, CHAR* argv[])
     printf("[KVS GStreamer Master] KVS WebRTC initialization completed "
            "successfully\n");
 
+    if (APP_PREGEN_CERTS) {
+        CHK_STATUS(genCerts(pSampleConfiguration));
+    }
+
     signalingClientCallbacks.version = SIGNALING_CLIENT_CALLBACKS_CURRENT_VERSION;
     signalingClientCallbacks.messageReceivedFn = masterMessageReceived;
     signalingClientCallbacks.errorReportFn = NULL;

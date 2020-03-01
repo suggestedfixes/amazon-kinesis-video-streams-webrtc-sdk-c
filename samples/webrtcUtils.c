@@ -1,5 +1,5 @@
-#define LOG_CLASS "WebRtcSamples"
-#include "webrtc.h"
+#define LOG_CLASS "WebRtcSamples" 
+#include "webrtc.h" 
 
 PSampleConfiguration gSampleConfiguration = NULL;
 
@@ -296,9 +296,14 @@ STATUS initializePeerConnection(PSampleConfiguration pSampleConfiguration, PRtcP
 
     MEMSET(&configuration, 0x00, SIZEOF(RtcConfiguration));
 
+    if (APP_PREGEN_CERTS) {
+        configuration.certificates[0].pCertificate = pSampleConfiguration->rtcConfig.certificates[0].pCertificate;
+        configuration.certificates[0].pPrivateKey = pSampleConfiguration->rtcConfig.certificates[0].pPrivateKey;
+    }
+
     // Set this to custom callback to enable filtering of interfaces
     configuration.kvsRtcConfiguration.iceSetInterfaceFilterFunc = NULL;
-    configuration.kvsRtcConfiguration.generatedCertificateBits = 1024;
+    configuration.kvsRtcConfiguration.generatedCertificateBits = APP_GENCERTBITS_OVERRIDE;
 
     // Set the  STUN server
     SNPRINTF(configuration.iceServers[0].urls, MAX_ICE_CONFIG_URI_LEN, KINESIS_VIDEO_STUN_URL, pSampleConfiguration->channelInfo.pRegion);
@@ -704,3 +709,23 @@ CleanUp:
     LEAVES();
     return retStatus;
 }
+
+STATUS genCerts(PSampleConfiguration pConfig)
+{
+    STATUS retStatus = STATUS_SUCCESS;
+    X509* pCert = NULL;
+    EVP_PKEY* pKey = NULL;
+
+    CHK_STATUS(createCertificateAndKey(APP_GENCERTBITS_OVERRIDE, &pCert, &pKey));
+
+    MEMSET(&(pConfig->rtcConfig), 0x00, SIZEOF(RtcConfiguration));
+    pConfig->rtcConfig.certificates[0].pCertificate = (PBYTE)pCert;
+    pConfig->rtcConfig.certificates[0].certificateSize = 0;
+    pConfig->rtcConfig.certificates[0].pPrivateKey = (PBYTE)pKey;
+    pConfig->rtcConfig.certificates[0].privateKeySize = 0;
+
+CleanUp:
+    CHK_LOG_ERR_NV(retStatus);
+    return retStatus;
+}
+
