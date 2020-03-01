@@ -434,6 +434,9 @@ add_executable(
 target_link_libraries(kvsWebrtcClientViewer kvsWebrtcClient
                       kvsWebrtcSignalingClient)
 
+target_compile_options(kvsWebrtcClient PUBLIC -O3)
+target_compile_options(kvsWebrtcSignalingClient PUBLIC -O3)
+
 if(COMPILER_WARNINGS)
   target_compile_options(kvsWebrtcClient PUBLIC -Wall -Werror -pedantic -Wextra -Wno-unknown-warning-option)
   target_compile_options(kvsWebrtcSignalingClient PUBLIC -Wall -Werror -pedantic -Wextra -Wno-unknown-warning-option)
@@ -454,6 +457,7 @@ if(GST_FOUND)
   )
   target_link_libraries(webrtc kvsWebrtcClient
                         kvsWebrtcSignalingClient ${GST_SAMPLE_LIBRARIES})
+  target_compile_options(webrtc PUBLIC -O3)
 endif()
 
 if(BUILD_TEST)

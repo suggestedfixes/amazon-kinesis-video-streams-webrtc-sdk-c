@@ -3,14 +3,22 @@
 #include <gst/app/gstappsink.h>
 
 extern PSampleConfiguration gSampleConfiguration;
-
-#define APP_RECEIVE_VIDEO_AUDIO  FALSE
-#define APP_DATA_TRANSFER        FALSE
-#define APP_TRICKLE_ICE          FALSE
-#define APP_TURN                 TRUE
-#define APP_GST_STRLEN           1024 
-
 CHAR appGstStr[APP_GST_STRLEN];
+
+VOID cleanGst(GstElement* pipeline, GstBus *bus, GstMessage *msg, BOOL gstCleaned) {
+    if (!gstCleaned) {
+        if (bus != NULL) {
+            gst_object_unref (bus);
+        }
+        if (pipeline != NULL) {
+            gst_element_set_state (pipeline, GST_STATE_NULL);
+            gst_object_unref (pipeline);
+        } 	        
+        if (msg != NULL) {
+            gst_message_unref(msg);
+        }
+    }
+}
 
 GstFlowReturn on_new_sample(GstElement *sink, gpointer data, UINT64 trackid)
 {
@@ -120,12 +128,13 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 {
     STATUS retStatus = STATUS_SUCCESS;
     GstElement *appsinkVideo = NULL, *appsinkAudio = NULL, *pipeline = NULL;
-    GstBus *bus;
-    GstMessage *msg;
+    GstBus *bus = NULL;
+    GstMessage *msg = NULL;
     GError *error = NULL;
     PSampleConfiguration pSampleConfiguration = (PSampleConfiguration) args;
     PCHAR gstStr = NULL;
     PCHAR rtspSrc = GETENV("APP_RTSP_SRC");
+    BOOL gstCleaned = FALSE;
 
     CHK(pSampleConfiguration != NULL, STATUS_NULL_ARG);
     CHK(rtspSrc != NULL, STATUS_NULL_ARG);
@@ -144,49 +153,63 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 
     switch (pSampleConfiguration->mediaType) {
         case SAMPLE_STREAMING_VIDEO_ONLY:
-            gstStr = "rtspsrc location=%s short-header=TRUE ! rtph264depay ! "
+            gstStr = "rtspsrc %s location=%s short-header=TRUE %s ! %s ! rtph264depay ! "
                         "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video";
             break;
 
         case SAMPLE_STREAMING_AUDIO_VIDEO:
-            gstStr = "rtspsrc location=%s short-header=TRUE ! rtph264depay ! "
+            gstStr = "rtspsrc %s location=%s short-header=TRUE %s ! %s ! rtph264depay ! "
                             "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! h264parse ! appsink sync=TRUE emit-signals=TRUE name=appsink-video autoaudiosrc ! "
                             "queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio";
             break;
     }
 
-    SPRINTF(appGstStr, gstStr, rtspSrc); 
+    SPRINTF(appGstStr, gstStr, 
+                        APP_GST_RTSPSRC_EXT ? "num-buffers=180" : "",
+                        rtspSrc, 
+                        APP_GST_ENFORCE_TCP ? "protocols=tcp" : "",
+                        APP_GST_RTSPSRC_AFT ? "queue leaky=2" : "");
+    
     printf("%s\n", appGstStr);
 
-    pipeline = gst_parse_launch(appGstStr,  &error);
+	// recreate gstreamer pipeline on error, exit the loop on EOS
+    // as long as there is no error nor eos, block on gst_bus_timed_pop_filtered
+    do {
+        gstCleaned = FALSE;
+		pipeline = gst_parse_launch(appGstStr,  &error);
 
-    CHK_ERR(pipeline != NULL, STATUS_INTERNAL_ERROR, "Failed to launch gstreamer");
+		CHK_ERR(pipeline != NULL, STATUS_INTERNAL_ERROR, "Failed to launch gstreamer");
 
-    appsinkVideo = gst_bin_get_by_name(GST_BIN(pipeline), "appsink-video");
-    appsinkAudio = gst_bin_get_by_name(GST_BIN(pipeline), "appsink-audio");
-    CHK_ERR(appsinkVideo != NULL || appsinkAudio != NULL, STATUS_INTERNAL_ERROR, "cant find appsink");
+		appsinkVideo = gst_bin_get_by_name(GST_BIN(pipeline), "appsink-video");
+		appsinkAudio = gst_bin_get_by_name(GST_BIN(pipeline), "appsink-audio");
+		CHK_ERR(appsinkVideo != NULL || appsinkAudio != NULL, STATUS_INTERNAL_ERROR, "cant find appsink");
 
-    if (appsinkVideo != NULL) {
-        g_signal_connect(appsinkVideo, "new-sample", G_CALLBACK(on_new_sample_video), (gpointer) pSampleConfiguration);
-    }
+		if (appsinkVideo != NULL) {
+			g_signal_connect(appsinkVideo, "new-sample", G_CALLBACK(on_new_sample_video), (gpointer) pSampleConfiguration);
+		}
 
-    if (appsinkAudio != NULL) {
-        g_signal_connect(appsinkAudio, "new-sample", G_CALLBACK(on_new_sample_audio), (gpointer) pSampleConfiguration);
-    }
+		if (appsinkAudio != NULL) {
+			g_signal_connect(appsinkAudio, "new-sample", G_CALLBACK(on_new_sample_audio), (gpointer) pSampleConfiguration);
+		}
 
-    gst_element_set_state (pipeline, GST_STATE_PLAYING);
+		gst_element_set_state (pipeline, GST_STATE_PLAYING);
 
-    /* block until error or EOS */
-    bus = gst_element_get_bus(pipeline);
-    msg = gst_bus_timed_pop_filtered(bus, GST_CLOCK_TIME_NONE, GST_MESSAGE_ERROR | GST_MESSAGE_EOS);
+		/* block until error or EOS */
+		bus = gst_element_get_bus(pipeline);
+		msg = gst_bus_timed_pop_filtered(bus, GST_CLOCK_TIME_NONE, GST_MESSAGE_ERROR | GST_MESSAGE_EOS);
 
-    /* Free resources */
-    if (msg != NULL) {
-        gst_message_unref(msg);
-    }
-    gst_object_unref (bus);
-    gst_element_set_state (pipeline, GST_STATE_NULL);
-    gst_object_unref (pipeline);
+        switch (GST_MESSAGE_TYPE (msg)) {
+            case GST_MESSAGE_EOS:
+                if (APP_GST_EOS_EXIT) {
+                    goto CleanUp; 
+                }
+                break;
+            default:
+                break;
+        }
+        cleanGst(pipeline, bus, msg, gstCleaned);
+        gstCleaned = TRUE;
+    } while (APP_GST_ERR_RECOVERY);
 
 CleanUp:
 
@@ -194,7 +217,7 @@ CleanUp:
         DLOGE("%s", error->message);
         g_clear_error (&error);
     }
-
+    cleanGst(pipeline, bus, msg, gstCleaned);
     CHK_LOG_ERR_NV(retStatus);
     return (PVOID) (ULONG_PTR) retStatus;
 }
@@ -227,13 +250,15 @@ VOID onSampleStreamingSessionShutdown(UINT64 customData, PSampleStreamingSession
 
 PVOID receiveGstreamerAudioVideo(PVOID args)
 {
+    return (PVOID) (ULONG_PTR) STATUS_SUCCESS;
     STATUS retStatus = STATUS_SUCCESS;
     GstElement *pipeline = NULL, *appsrcAudio = NULL;
-    GstBus *bus;
-    GstMessage *msg;
+    GstBus *bus = NULL;
+    GstMessage *msg = NULL;
     GError *error = NULL;
     PSampleStreamingSession pSampleStreamingSession = (PSampleStreamingSession) args;
     gchar *videoDescription = "", *audioDescription = "", *audioVideoDescription;
+    BOOL gstCleaned = FALSE;
 
     CHK(pSampleStreamingSession != NULL, STATUS_NULL_ARG);
 
@@ -252,36 +277,49 @@ PVOID receiveGstreamerAudioVideo(PVOID args)
             break;
     }
 
-    audioVideoDescription = g_strjoin(" ", audioDescription, videoDescription, NULL);
+    // disable audio for now
+    audioDescription = "";
 
-    pipeline = gst_parse_launch(audioVideoDescription, &error);
+	// recreate gstreamer pipeline on error, exit the loop on EOS
+    // as long as there is no error nor eos, block on gst_bus_timed_pop_filtered
+    do {
+        gstCleaned = TRUE;
+        audioVideoDescription = g_strjoin(" ", audioDescription, videoDescription, NULL);
 
-    appsrcAudio = gst_bin_get_by_name(GST_BIN(pipeline), "appsrc-audio");
-    CHK_ERR(appsrcAudio != NULL, STATUS_INTERNAL_ERROR, "cant find appsrc");
+        pipeline = gst_parse_launch(audioVideoDescription, &error);
 
-    transceiverOnFrame(pSampleStreamingSession->pAudioRtcRtpTransceiver,
-                       (UINT64) appsrcAudio,
-                       onGstAudioFrameReady);
+        appsrcAudio = gst_bin_get_by_name(GST_BIN(pipeline), "appsrc-audio");
+        CHK_ERR(appsrcAudio != NULL, STATUS_INTERNAL_ERROR, "cant find appsrc");
 
-    CHK_STATUS(streamingSessionOnShutdown(pSampleStreamingSession, (UINT64) appsrcAudio, onSampleStreamingSessionShutdown));
+        transceiverOnFrame(pSampleStreamingSession->pAudioRtcRtpTransceiver,
+                           (UINT64) appsrcAudio,
+                           onGstAudioFrameReady);
 
-    g_free(audioVideoDescription);
+        CHK_STATUS(streamingSessionOnShutdown(pSampleStreamingSession, (UINT64) appsrcAudio, onSampleStreamingSessionShutdown));
 
-    CHK_ERR(pipeline != NULL, STATUS_INTERNAL_ERROR, "Failed to launch gstreamer");
+        g_free(audioVideoDescription);
 
-    gst_element_set_state (pipeline, GST_STATE_PLAYING);
+        CHK_ERR(pipeline != NULL, STATUS_INTERNAL_ERROR, "Failed to launch gstreamer");
 
-    /* block until error or EOS */
-    bus = gst_element_get_bus(pipeline);
-    msg = gst_bus_timed_pop_filtered(bus, GST_CLOCK_TIME_NONE, GST_MESSAGE_ERROR | GST_MESSAGE_EOS);
+        gst_element_set_state (pipeline, GST_STATE_PLAYING);
 
-    /* Free resources */
-    if (msg != NULL) {
-        gst_message_unref(msg);
-    }
-    gst_object_unref (bus);
-    gst_element_set_state (pipeline, GST_STATE_NULL);
-    gst_object_unref (pipeline);
+		/* block until error or EOS */
+		bus = gst_element_get_bus(pipeline);
+		msg = gst_bus_timed_pop_filtered(bus, GST_CLOCK_TIME_NONE, GST_MESSAGE_ERROR | GST_MESSAGE_EOS);
+
+        switch (GST_MESSAGE_TYPE (msg)) {
+            case GST_MESSAGE_EOS:
+                if (APP_GST_EOS_EXIT) {
+                    goto CleanUp;
+                } 			   
+                break;
+            default:
+                break;
+        }
+
+        cleanGst(pipeline, bus, msg, gstCleaned);
+        gstCleaned = TRUE;
+	} while(APP_GST_ERR_RECOVERY);
 
 CleanUp:
     if (error != NULL) {
@@ -289,6 +327,7 @@ CleanUp:
         g_clear_error (&error);
     }
 
+    cleanGst(pipeline, bus, msg, gstCleaned);
     CHK_LOG_ERR_NV(retStatus);
     return (PVOID) (ULONG_PTR) retStatus;
 }
