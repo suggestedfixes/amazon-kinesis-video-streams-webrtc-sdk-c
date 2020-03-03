@@ -30,11 +30,11 @@ extern "C" {
 #define APP_TRICKLE_ICE                     FALSE
 #define APP_TURN                            TRUE
 
-#define APP_GST_ERR_RECOVERY                FALSE
+#define APP_GST_ERR_RECOVERY                TRUE
 #define APP_GST_EOS_EXIT                    FALSE
-#define APP_GST_RTSPSRC_EXT                 TRUE
+#define APP_GST_RTSPSRC_EXT                 FALSE
 #define APP_GST_ENFORCE_TCP                 TRUE
-#define APP_GST_RTSPSRC_AFT                 TRUE
+#define APP_GST_RTSPSRC_AFT                 FALSE
 #define APP_GST_STRLEN                      1024
 
 #define APP_PREGEN_CERTS                    TRUE
