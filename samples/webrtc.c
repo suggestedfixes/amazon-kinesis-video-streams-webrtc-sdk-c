@@ -228,7 +228,7 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 
     switch (pSampleConfiguration->mediaType) {
     case SAMPLE_STREAMING_VIDEO_ONLY:
-        gstStr = "rtspsrc %s location=%s short-header=TRUE %s ! %s ! rtph264depay ! "
+        gstStr = "rtspsrc %s location=%s short-header=TRUE %s ! %s rtph264depay ! "
                  "video/"
                  "x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! "
                  "appsink sync=TRUE emit-signals=TRUE name=appsink-video";
@@ -248,7 +248,7 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 
     SPRINTF(appGstStr, gstStr, APP_GST_RTSPSRC_EXT ? "num-buffers=180" : "",
         rtspSrc, APP_GST_ENFORCE_TCP ? "protocols=tcp" : "",
-        APP_GST_RTSPSRC_AFT ? "queue leaky=2" : "");
+        APP_GST_RTSPSRC_AFT ? "queue leaky=2 ! " : "");
 
     printf("%s\n", appGstStr);
 
