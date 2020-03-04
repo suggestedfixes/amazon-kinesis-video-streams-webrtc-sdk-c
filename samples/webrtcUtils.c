@@ -716,7 +716,7 @@ STATUS genCerts(PSampleConfiguration pConfig)
     X509* pCert = NULL;
     EVP_PKEY* pKey = NULL;
 
-    CHK_STATUS(createCertificateAndKey(APP_GENCERTBITS_OVERRIDE, &pCert, &pKey));
+    CHK_STATUS(createCertificateAndKey(APP_GENCERTBITS_OVERRIDE, FALSE, &pCert, &pKey));
 
     MEMSET(&(pConfig->rtcConfig), 0x00, SIZEOF(RtcConfiguration));
     pConfig->rtcConfig.certificates[0].pCertificate = (PBYTE)pCert;
