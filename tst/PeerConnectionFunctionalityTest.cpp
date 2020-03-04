@@ -278,7 +278,6 @@ TEST_F(PeerConnectionFunctionalityTest, exchangeMediaRSA)
     EXPECT_EQ(ATOMIC_LOAD(&seenVideo), 1);
 }
 
-
 TEST_F(PeerConnectionFunctionalityTest, DISABLED_exchangeMediaThroughTurnRandomStop)
 {
     if (!mAccessKeyIdSet) {

@@ -466,6 +466,7 @@ STATUS createPeerConnection(PRtcConfiguration pConfiguration, PRtcPeerConnection
 
     dtlsSessionCallbacks.customData = (UINT64) pKvsPeerConnection;
     dtlsSessionCallbacks.outboundPacketFn = onDtlsOutboundPacket;
+
     CHK_STATUS(createDtlsSession(&dtlsSessionCallbacks, 
                 pKvsPeerConnection->timerQueueHandle, 
                 pConfiguration->kvsRtcConfiguration.generatedCertificateBits,
