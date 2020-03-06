@@ -499,18 +499,13 @@ INT32 main(INT32 argc, CHAR* argv[])
         CHK_STATUS(genCerts(pSampleConfiguration));
     }
 
-    signalingClientCallbacks.version = SIGNALING_CLIENT_CALLBACKS_CURRENT_VERSION;
     signalingClientCallbacks.messageReceivedFn = masterMessageReceived;
-    signalingClientCallbacks.errorReportFn = NULL;
-    signalingClientCallbacks.stateChangeFn = signalingClientStateChanged;
-    signalingClientCallbacks.customData = (UINT64)pSampleConfiguration;
-
-    clientInfo.version = SIGNALING_CLIENT_INFO_CURRENT_VERSION;
-    STRCPY(clientInfo.clientId, SAMPLE_MASTER_CLIENT_ID);
 
     CHK_STATUS(createSignalingClientSync(
-        &clientInfo, &pSampleConfiguration->channelInfo,
-        &signalingClientCallbacks, pSampleConfiguration->pCredentialProvider,
+        &pSampleConfiguration->clientInfo, 
+        &pSampleConfiguration->channelInfo,
+        &pSampleConfiguration->signalingClientCallbacks, 
+        pSampleConfiguration->pCredentialProvider,
         &pSampleConfiguration->signalingClientHandle));
     printf("[KVS GStreamer Master] Signaling client created successfully\n");
 
