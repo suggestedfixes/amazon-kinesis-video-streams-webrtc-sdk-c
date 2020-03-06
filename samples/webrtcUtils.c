@@ -1,5 +1,5 @@
-#define LOG_CLASS "WebRtcSamples" 
-#include "webrtc.h" 
+#define LOG_CLASS "WebRtcSamples"
+#include "webrtc.h"
 
 PSampleConfiguration gSampleConfiguration = NULL;
 
@@ -101,7 +101,7 @@ STATUS signalingClientStateChanged(UINT64 customData, SIGNALING_CLIENT_STATE sta
 
 STATUS signalingClientError(UINT64 customData, STATUS status, PCHAR msg, UINT32 msgLen)
 {
-    PSampleConfiguration pSampleConfiguration = (PSampleConfiguration) customData;
+    PSampleConfiguration pSampleConfiguration = (PSampleConfiguration)customData;
 
     DLOGW("Signaling client generated an error 0x%08x - '%.*s'", status, msgLen, msg);
 
@@ -618,15 +618,15 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
     pSampleConfiguration->signalingClientCallbacks.version = SIGNALING_CLIENT_CALLBACKS_CURRENT_VERSION;
     pSampleConfiguration->signalingClientCallbacks.errorReportFn = signalingClientError;
     pSampleConfiguration->signalingClientCallbacks.stateChangeFn = signalingClientStateChanged;
-    pSampleConfiguration->signalingClientCallbacks.customData = (UINT64) pSampleConfiguration;
-	pSampleConfiguration->signalingClientCallbacks.messageReceivedFn = masterMessageReceived;
+    pSampleConfiguration->signalingClientCallbacks.customData = (UINT64)pSampleConfiguration;
+    pSampleConfiguration->signalingClientCallbacks.messageReceivedFn = masterMessageReceived;
 
     ATOMIC_STORE_BOOL(&pSampleConfiguration->interrupted, FALSE);
     ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, FALSE);
     ATOMIC_STORE_BOOL(&pSampleConfiguration->appTerminateFlag, FALSE);
     ATOMIC_STORE_BOOL(&pSampleConfiguration->updatingSampleStreamingSessionList, FALSE);
-	
-	ATOMIC_STORE_BOOL(&pSampleConfiguration->recreateSignalingClient, FALSE);
+
+    ATOMIC_STORE_BOOL(&pSampleConfiguration->recreateSignalingClient, FALSE);
 
 CleanUp:
 
@@ -729,10 +729,10 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
         if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->recreateSignalingClient)) {
             CHK_STATUS(freeSignalingClient(&pSampleConfiguration->signalingClientHandle));
             CHK_STATUS(createSignalingClientSync(&pSampleConfiguration->clientInfo,
-                                                 &pSampleConfiguration->channelInfo,
-                                                 &pSampleConfiguration->signalingClientCallbacks,
-                                                 pSampleConfiguration->pCredentialProvider,
-                                                 &pSampleConfiguration->signalingClientHandle););
+                           &pSampleConfiguration->channelInfo,
+                           &pSampleConfiguration->signalingClientCallbacks,
+                           pSampleConfiguration->pCredentialProvider,
+                           &pSampleConfiguration->signalingClientHandle););
 
             // Re-set the variable again
             ATOMIC_STORE_BOOL(&pSampleConfiguration->recreateSignalingClient, FALSE);
@@ -767,4 +767,3 @@ CleanUp:
     CHK_LOG_ERR_NV(retStatus);
     return retStatus;
 }
-

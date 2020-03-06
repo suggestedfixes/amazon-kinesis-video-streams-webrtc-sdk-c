@@ -140,8 +140,8 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
                     frame.presentationTs = pSampleStreamingSession->audioTimestamp;
                     frame.decodingTs = frame.presentationTs;
                     pSampleStreamingSession->audioTimestamp += SAMPLE_AUDIO_FRAME_DURATION; // assume audio frame size
-                        // is 20ms, which is
-                        // default in opusenc
+                    // is 20ms, which is
+                    // default in opusenc
 
                 } else {
                     pRtcRtpTransceiver = pSampleStreamingSession->pVideoRtcRtpTransceiver;
@@ -502,9 +502,9 @@ INT32 main(INT32 argc, CHAR* argv[])
     signalingClientCallbacks.messageReceivedFn = masterMessageReceived;
 
     CHK_STATUS(createSignalingClientSync(
-        &pSampleConfiguration->clientInfo, 
+        &pSampleConfiguration->clientInfo,
         &pSampleConfiguration->channelInfo,
-        &pSampleConfiguration->signalingClientCallbacks, 
+        &pSampleConfiguration->signalingClientCallbacks,
         pSampleConfiguration->pCredentialProvider,
         &pSampleConfiguration->signalingClientHandle));
     printf("[KVS GStreamer Master] Signaling client created successfully\n");
