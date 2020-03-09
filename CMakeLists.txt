@@ -111,7 +111,7 @@ if(BUILD_DEPENDENCIES)
               ${CMAKE_SOURCE_DIR}/cmake-scripts/libopenssl-CMakeLists.txt
               ${OPEN_SOURCE_DIR}/libopenssl/CMakeLists.txt COPYONLY)
       execute_process(
-              COMMAND ${CMAKE_COMMAND} -DBUILD_OPENSSL_PLATFORM=${BUILD_OPENSSL_PLATFORM} -DOPEN_SRC_INSTALL_PREFIX=${OPEN_SRC_INSTALL_PREFIX} -G ${CMAKE_GENERATOR} .
+          COMMAND ${CMAKE_COMMAND} -DCMAKE_BUILD_TYPE=Debug -DBUILD_OPENSSL_PLATFORM=${BUILD_OPENSSL_PLATFORM} -DOPEN_SRC_INSTALL_PREFIX=${OPEN_SRC_INSTALL_PREFIX} -G ${CMAKE_GENERATOR} .
               RESULT_VARIABLE result
               WORKING_DIRECTORY ${OPEN_SOURCE_DIR}/libopenssl)
       if(result)
@@ -365,7 +365,7 @@ find_library(
 # add_definitions(-DHEAP_DEBUG)
 
 # Uncomment below to add thread id in log
-# add_definitions(-DENABLE_LOG_THREAD_ID)
+add_definitions(-DENABLE_LOG_THREAD_ID)
 
 # Uncomment below line for very verbose logging
 # add_definitions(-DLOG_STREAMING)
