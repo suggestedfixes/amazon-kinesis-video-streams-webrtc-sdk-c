@@ -499,8 +499,6 @@ INT32 main(INT32 argc, CHAR* argv[])
         CHK_STATUS(genCerts(pSampleConfiguration));
     }
 
-    signalingClientCallbacks.messageReceivedFn = masterMessageReceived;
-
     CHK_STATUS(createSignalingClientSync(
         &pSampleConfiguration->clientInfo,
         &pSampleConfiguration->channelInfo,
@@ -510,8 +508,8 @@ INT32 main(INT32 argc, CHAR* argv[])
     printf("[KVS GStreamer Master] Signaling client created successfully\n");
 
     // Enable the processing of the messages
-    CHK_STATUS(
-        signalingClientConnectSync(pSampleConfiguration->signalingClientHandle));
+    CHK_STATUS(signalingClientConnectSync(pSampleConfiguration->signalingClientHandle));
+
     printf("[KVS GStreamer Master] Signaling client connection to socket "
            "established\n");
 

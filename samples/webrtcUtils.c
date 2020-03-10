@@ -621,6 +621,8 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
     pSampleConfiguration->signalingClientCallbacks.customData = (UINT64)pSampleConfiguration;
     pSampleConfiguration->signalingClientCallbacks.messageReceivedFn = masterMessageReceived;
 
+    pSampleConfiguration->clientInfo.version = SIGNALING_CLIENT_INFO_CURRENT_VERSION;
+
     ATOMIC_STORE_BOOL(&pSampleConfiguration->interrupted, FALSE);
     ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, FALSE);
     ATOMIC_STORE_BOOL(&pSampleConfiguration->appTerminateFlag, FALSE);
@@ -732,9 +734,9 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
                            &pSampleConfiguration->channelInfo,
                            &pSampleConfiguration->signalingClientCallbacks,
                            pSampleConfiguration->pCredentialProvider,
-                           &pSampleConfiguration->signalingClientHandle););
+                           &pSampleConfiguration->signalingClientHandle));
 
-            // Re-set the variable again
+            CHK_STATUS(signalingClientConnectSync(pSampleConfiguration->signalingClientHandle));
             ATOMIC_STORE_BOOL(&pSampleConfiguration->recreateSignalingClient, FALSE);
         }
     }
