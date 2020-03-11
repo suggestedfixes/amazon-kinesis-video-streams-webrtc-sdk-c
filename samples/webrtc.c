@@ -8,6 +8,7 @@ CHAR appGstStr[APP_GST_STRLEN];
 
 typedef struct _GstCustomData {
     gboolean is_live;
+    gboolean eos;
     GstElement* pipeline;
     GMainLoop* loop;
 } GstCustomData;
@@ -15,6 +16,7 @@ typedef struct _GstCustomData {
 static void gstMessageCallback(GstBus* bus, GstMessage* msg,
     GstCustomData* data)
 {
+    data->eos = FALSE;
     switch (GST_MESSAGE_TYPE(msg)) {
     case GST_MESSAGE_ERROR: {
         GError* err;
@@ -32,6 +34,7 @@ static void gstMessageCallback(GstBus* bus, GstMessage* msg,
     case GST_MESSAGE_EOS: {
         gst_element_set_state(data->pipeline, GST_STATE_READY);
         g_main_loop_quit(data->loop);
+        data->eos = TRUE;
         break;
     }
     case GST_MESSAGE_BUFFERING: {
@@ -299,7 +302,7 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 
         cleanGst(main_loop, pipeline, bus, msg, gstCleaned);
         gstCleaned = TRUE;
-    } while (APP_GST_ERR_RECOVERY);
+    } while (APP_GST_ERR_RECOVERY && !data.eos);
 
 CleanUp:
 

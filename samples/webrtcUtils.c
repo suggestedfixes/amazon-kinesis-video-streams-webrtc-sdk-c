@@ -697,6 +697,7 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
     PSampleStreamingSession pSampleStreamingSession = NULL;
     UINT32 i;
     BOOL locked = FALSE;
+    SIGNALING_CLIENT_STATE signalingClientState;
 
     CHK(pSampleConfiguration != NULL, STATUS_NULL_ARG);
 
@@ -704,7 +705,6 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
     locked = TRUE;
 
     while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->interrupted)) {
-
         // scan and cleanup terminated streaming session
         for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
             if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->sampleStreamingSessionList[i]->terminateFlag)) {
@@ -728,15 +728,13 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
         CVAR_WAIT(pSampleConfiguration->cvar, pSampleConfiguration->sampleConfigurationObjLock, 5 * HUNDREDS_OF_NANOS_IN_A_SECOND);
 
         // Check if we need to re-create the signaling client on-the-fly
-        if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->recreateSignalingClient)) {
-            CHK_STATUS(freeSignalingClient(&pSampleConfiguration->signalingClientHandle));
-            CHK_STATUS(createSignalingClientSync(&pSampleConfiguration->clientInfo,
-                           &pSampleConfiguration->channelInfo,
-                           &pSampleConfiguration->signalingClientCallbacks,
-                           pSampleConfiguration->pCredentialProvider,
-                           &pSampleConfiguration->signalingClientHandle));
-
-            CHK_STATUS(signalingClientConnectSync(pSampleConfiguration->signalingClientHandle));
+        if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->recreateSignalingClient) && STATUS_SUCCEEDED(freeSignalingClient(&pSampleConfiguration->signalingClientHandle)) && 
+                STATUS_SUCCEEDED(createSignalingClientSync(&pSampleConfiguration->clientInfo, 
+                        &pSampleConfiguration->channelInfo, 
+                        &pSampleConfiguration->signalingClientCallbacks, 
+                        pSampleConfiguration->pCredentialProvider, 
+                        &pSampleConfiguration->signalingClientHandle)) &&
+                STATUS_SUCCEEDED(signalingClientConnectSync(pSampleConfiguration->signalingClientHandle))) {
             ATOMIC_STORE_BOOL(&pSampleConfiguration->recreateSignalingClient, FALSE);
         }
     }
