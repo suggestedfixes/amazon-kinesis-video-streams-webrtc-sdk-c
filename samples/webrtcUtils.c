@@ -711,7 +711,7 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
                 pSampleStreamingSession = pSampleConfiguration->sampleStreamingSessionList[i];
 
                 ATOMIC_STORE_BOOL(&pSampleConfiguration->updatingSampleStreamingSessionList, TRUE);
-                while (ATOMIC_LOAD(&pSampleConfiguration->streamingSessionListReadingThreadCount) > 0) {
+                while (ATOMIC_LOAD(&pSampleConfiguration->streamingSessionListReadingThreadCount) != 0) {
                     // busy loop until all media thread stopped reading stream session list
                     THREAD_SLEEP(5 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND);
                 }
@@ -728,15 +728,25 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
         CVAR_WAIT(pSampleConfiguration->cvar, pSampleConfiguration->sampleConfigurationObjLock, 5 * HUNDREDS_OF_NANOS_IN_A_SECOND);
 
         // Check if we need to re-create the signaling client on-the-fly
-        if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->recreateSignalingClient) && STATUS_SUCCEEDED(freeSignalingClient(&pSampleConfiguration->signalingClientHandle)) && 
-                STATUS_SUCCEEDED(createSignalingClientSync(&pSampleConfiguration->clientInfo, 
-                        &pSampleConfiguration->channelInfo, 
-                        &pSampleConfiguration->signalingClientCallbacks, 
-                        pSampleConfiguration->pCredentialProvider, 
-                        &pSampleConfiguration->signalingClientHandle)) &&
-                STATUS_SUCCEEDED(signalingClientConnectSync(pSampleConfiguration->signalingClientHandle))) {
+        if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->recreateSignalingClient) &&
+            STATUS_SUCCEEDED(freeSignalingClient(&pSampleConfiguration->signalingClientHandle)) &&
+            STATUS_SUCCEEDED(createSignalingClientSync(&pSampleConfiguration->clientInfo,
+                    &pSampleConfiguration->channelInfo,
+                    &pSampleConfiguration->signalingClientCallbacks,
+                    pSampleConfiguration->pCredentialProvider,
+                    &pSampleConfiguration->signalingClientHandle))) {
+            // Re-set the variable again
             ATOMIC_STORE_BOOL(&pSampleConfiguration->recreateSignalingClient, FALSE);
         }
+
+        // Check the signaling client state and connect if needed
+        if (IS_VALID_SIGNALING_CLIENT_HANDLE(pSampleConfiguration->signalingClientHandle)) {
+            CHK_STATUS(signalingClientGetCurrentState(pSampleConfiguration->signalingClientHandle, &signalingClientState));
+            if (signalingClientState == SIGNALING_CLIENT_STATE_READY) {
+                UNUSED_PARAM(signalingClientConnectSync(pSampleConfiguration->signalingClientHandle));
+            }
+        }
+
     }
 
 CleanUp:
@@ -759,9 +769,7 @@ STATUS genCerts(PSampleConfiguration pConfig)
 
     MEMSET(&(pConfig->rtcConfig), 0x00, SIZEOF(RtcConfiguration));
     pConfig->rtcConfig.certificates[0].pCertificate = (PBYTE)pCert;
-    pConfig->rtcConfig.certificates[0].certificateSize = 0;
     pConfig->rtcConfig.certificates[0].pPrivateKey = (PBYTE)pKey;
-    pConfig->rtcConfig.certificates[0].privateKeySize = 0;
 
 CleanUp:
     CHK_LOG_ERR_NV(retStatus);

@@ -25,18 +25,18 @@ extern "C" {
 #define CA_CERT_PEM_FILE_EXTENSION ".pem"
 
 #define APP_RECEIVE_VIDEO_AUDIO TRUE
-#define APP_DATA_TRANSFER TRUE
-#define APP_TRICKLE_ICE TRUE
-#define APP_TURN TRUE
+#define APP_DATA_TRANSFER       TRUE
+#define APP_TRICKLE_ICE         TRUE
+#define APP_TURN                TRUE
 
-#define APP_GST_ERR_RECOVERY    TRUE
+#define APP_GST_ERR_RECOVERY    FALSE
 #define APP_GST_EOS_EXIT        FALSE
 #define APP_GST_RTSPSRC_EXT     FALSE
-#define APP_GST_ENFORCE_TCP     TRUE
+#define APP_GST_ENFORCE_TCP     FALSE
 #define APP_GST_RTSPSRC_AFT     FALSE
 #define APP_GST_STRLEN          1024
 
-#define APP_PREGEN_CERTS        TRUE
+#define APP_PREGEN_CERTS         FALSE
 #define APP_GENCERTBITS_OVERRIDE 1024
 
 typedef enum {
