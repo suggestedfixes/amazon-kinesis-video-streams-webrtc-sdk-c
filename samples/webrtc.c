@@ -8,6 +8,7 @@ CHAR appGstStr[APP_GST_STRLEN];
 
 typedef struct _GstCustomData {
     gboolean is_live;
+    gboolean eos;
     GstElement* pipeline;
     GMainLoop* loop;
 } GstCustomData;
@@ -15,6 +16,7 @@ typedef struct _GstCustomData {
 static void gstMessageCallback(GstBus* bus, GstMessage* msg,
     GstCustomData* data)
 {
+    data->eos = FALSE;
     switch (GST_MESSAGE_TYPE(msg)) {
     case GST_MESSAGE_ERROR: {
         GError* err;
@@ -32,6 +34,7 @@ static void gstMessageCallback(GstBus* bus, GstMessage* msg,
     case GST_MESSAGE_EOS: {
         gst_element_set_state(data->pipeline, GST_STATE_READY);
         g_main_loop_quit(data->loop);
+        data->eos = TRUE;
         break;
     }
     case GST_MESSAGE_BUFFERING: {
@@ -140,8 +143,8 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
                     frame.presentationTs = pSampleStreamingSession->audioTimestamp;
                     frame.decodingTs = frame.presentationTs;
                     pSampleStreamingSession->audioTimestamp += SAMPLE_AUDIO_FRAME_DURATION; // assume audio frame size
-                        // is 20ms, which is
-                        // default in opusenc
+                    // is 20ms, which is
+                    // default in opusenc
 
                 } else {
                     pRtcRtpTransceiver = pSampleStreamingSession->pVideoRtcRtpTransceiver;
@@ -299,7 +302,7 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 
         cleanGst(main_loop, pipeline, bus, msg, gstCleaned);
         gstCleaned = TRUE;
-    } while (APP_GST_ERR_RECOVERY);
+    } while (APP_GST_ERR_RECOVERY && !data.eos);
 
 CleanUp:
 
@@ -495,30 +498,21 @@ INT32 main(INT32 argc, CHAR* argv[])
     printf("[KVS GStreamer Master] KVS WebRTC initialization completed "
            "successfully\n");
 
-#ifdef APP_PREGEN_CERTS
     if (APP_PREGEN_CERTS) {
         CHK_STATUS(genCerts(pSampleConfiguration));
     }
-#endif
-
-    signalingClientCallbacks.version = SIGNALING_CLIENT_CALLBACKS_CURRENT_VERSION;
-    signalingClientCallbacks.messageReceivedFn = masterMessageReceived;
-    signalingClientCallbacks.errorReportFn = NULL;
-    signalingClientCallbacks.stateChangeFn = signalingClientStateChanged;
-    signalingClientCallbacks.customData = (UINT64)pSampleConfiguration;
-
-    clientInfo.version = SIGNALING_CLIENT_INFO_CURRENT_VERSION;
-    STRCPY(clientInfo.clientId, SAMPLE_MASTER_CLIENT_ID);
 
     CHK_STATUS(createSignalingClientSync(
-        &clientInfo, &pSampleConfiguration->channelInfo,
-        &signalingClientCallbacks, pSampleConfiguration->pCredentialProvider,
+        &pSampleConfiguration->clientInfo,
+        &pSampleConfiguration->channelInfo,
+        &pSampleConfiguration->signalingClientCallbacks,
+        pSampleConfiguration->pCredentialProvider,
         &pSampleConfiguration->signalingClientHandle));
     printf("[KVS GStreamer Master] Signaling client created successfully\n");
 
     // Enable the processing of the messages
-    CHK_STATUS(
-        signalingClientConnectSync(pSampleConfiguration->signalingClientHandle));
+    CHK_STATUS(signalingClientConnectSync(pSampleConfiguration->signalingClientHandle));
+
     printf("[KVS GStreamer Master] Signaling client connection to socket "
            "established\n");
 

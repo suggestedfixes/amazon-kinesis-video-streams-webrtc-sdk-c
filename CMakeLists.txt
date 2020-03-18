@@ -268,9 +268,6 @@ add_executable(
   ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/kvsWebRTCClientViewer.c)
 target_link_libraries(kvsWebrtcClientViewer kvsWebrtcClient kvsWebrtcSignalingClient)
 
-target_compile_options(kvsWebrtcClient PUBLIC -O3)
-target_compile_options(kvsWebrtcSignalingClient PUBLIC -O3)
-
 if(COMPILER_WARNINGS)
   target_compile_options(kvsWebrtcClient PUBLIC -Wall -Werror -pedantic -Wextra -Wno-unknown-warning-option)
   target_compile_options(kvsWebrtcSignalingClient PUBLIC -Wall -Werror -pedantic -Wextra -Wno-unknown-warning-option)
@@ -284,14 +281,6 @@ if(GST_FOUND)
   )
   target_link_libraries(kvsWebrtcClientMasterGstSample kvsWebrtcClient
                         kvsWebrtcSignalingClient ${GST_SAMPLE_LIBRARIES})
-  add_executable(
-    webrtc
-    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/webrtcUtils.c
-    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/webrtc.c
-  )
-  target_link_libraries(webrtc kvsWebrtcClient
-                        kvsWebrtcSignalingClient ${GST_SAMPLE_LIBRARIES})
-  target_compile_options(webrtc PUBLIC -O3)
 endif()
 
 if(BUILD_TEST)

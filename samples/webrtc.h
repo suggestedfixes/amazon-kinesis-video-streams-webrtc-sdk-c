@@ -7,8 +7,8 @@
 extern "C" {
 #endif
 
-#include <com/amazonaws/kinesis/video/webrtcclient/Include.h>
 #include "../src/source/Include_i.h"
+#include <com/amazonaws/kinesis/video/webrtcclient/Include.h>
 
 #define NUMBER_OF_H264_FRAME_FILES 403
 #define NUMBER_OF_OPUS_FRAME_FILES 618
@@ -24,20 +24,20 @@ extern "C" {
 
 #define CA_CERT_PEM_FILE_EXTENSION ".pem"
 
+#define APP_RECEIVE_VIDEO_AUDIO TRUE
+#define APP_DATA_TRANSFER       TRUE
+#define APP_TRICKLE_ICE         TRUE
+#define APP_TURN                TRUE
 
-#define APP_RECEIVE_VIDEO_AUDIO             TRUE
-#define APP_DATA_TRANSFER                   TRUE
-#define APP_TRICKLE_ICE                     FALSE
-#define APP_TURN                            TRUE
+#define APP_GST_ERR_RECOVERY    FALSE
+#define APP_GST_EOS_EXIT        FALSE
+#define APP_GST_RTSPSRC_EXT     FALSE
+#define APP_GST_ENFORCE_TCP     FALSE
+#define APP_GST_RTSPSRC_AFT     FALSE
+#define APP_GST_STRLEN          1024
 
-#define APP_GST_ERR_RECOVERY                TRUE
-#define APP_GST_EOS_EXIT                    FALSE
-#define APP_GST_RTSPSRC_EXT                 FALSE
-#define APP_GST_ENFORCE_TCP                 TRUE
-#define APP_GST_RTSPSRC_AFT                 FALSE
-#define APP_GST_STRLEN                      1024
-
-#define APP_GENCERTBITS_OVERRIDE            1024
+#define APP_PREGEN_CERTS         FALSE
+#define APP_GENCERTBITS_OVERRIDE 1024
 
 typedef enum {
     SAMPLE_STREAMING_VIDEO_ONLY,
@@ -52,6 +52,7 @@ typedef struct {
     volatile ATOMIC_BOOL interrupted;
     volatile ATOMIC_BOOL mediaThreadStarted;
     volatile ATOMIC_BOOL updatingSampleStreamingSessionList;
+    volatile ATOMIC_BOOL recreateSignalingClient;
     volatile SIZE_T streamingSessionListReadingThreadCount;
     ChannelInfo channelInfo;
     PCHAR pCaCertPath;
@@ -76,7 +77,8 @@ typedef struct {
     UINT64 customData;
     PSampleStreamingSession sampleStreamingSessionList[DEFAULT_MAX_CONCURRENT_STREAMING_SESSION];
     UINT32 streamingSessionCount;
-
+    SignalingClientCallbacks signalingClientCallbacks;
+    SignalingClientInfo clientInfo;
     RtcConfiguration rtcConfig;
 } SampleConfiguration, *PSampleConfiguration;
 

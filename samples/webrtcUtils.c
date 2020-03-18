@@ -1,5 +1,5 @@
-#define LOG_CLASS "WebRtcSamples" 
-#include "webrtc.h" 
+#define LOG_CLASS "WebRtcSamples"
+#include "webrtc.h"
 
 PSampleConfiguration gSampleConfiguration = NULL;
 
@@ -89,11 +89,29 @@ STATUS signalingClientStateChanged(UINT64 customData, SIGNALING_CLIENT_STATE sta
 {
     UNUSED_PARAM(customData);
     STATUS retStatus = STATUS_SUCCESS;
+    PCHAR pStateStr;
 
-    DLOGV("Signaling client state changed to %d", state);
+    signalingClientGetStateString(state, &pStateStr);
+
+    DLOGV("Signaling client state changed to %d - '%s'", state, pStateStr);
 
     // Return success to continue
     return retStatus;
+}
+
+STATUS signalingClientError(UINT64 customData, STATUS status, PCHAR msg, UINT32 msgLen)
+{
+    PSampleConfiguration pSampleConfiguration = (PSampleConfiguration)customData;
+
+    DLOGW("Signaling client generated an error 0x%08x - '%.*s'", status, msgLen, msg);
+
+    // We will force re-create the signaling client on the following errors
+    if (status == STATUS_SIGNALING_ICE_CONFIG_REFRESH_FAILED || status == STATUS_SIGNALING_RECONNECT_FAILED) {
+        ATOMIC_STORE_BOOL(&pSampleConfiguration->recreateSignalingClient, TRUE);
+        CVAR_BROADCAST(gSampleConfiguration->cvar);
+    }
+
+    return STATUS_SUCCESS;
 }
 
 STATUS masterMessageReceived(UINT64 customData, PReceivedSignalingMessage pReceivedSignalingMessage)
@@ -296,12 +314,10 @@ STATUS initializePeerConnection(PSampleConfiguration pSampleConfiguration, PRtcP
 
     MEMSET(&configuration, 0x00, SIZEOF(RtcConfiguration));
 
-#ifdef APP_PREGEN_CERTS
     if (APP_PREGEN_CERTS) {
         configuration.certificates[0].pCertificate = pSampleConfiguration->rtcConfig.certificates[0].pCertificate;
         configuration.certificates[0].pPrivateKey = pSampleConfiguration->rtcConfig.certificates[0].pPrivateKey;
     }
-#endif
 
     // Set this to custom callback to enable filtering of interfaces
     configuration.kvsRtcConfiguration.iceSetInterfaceFilterFunc = NULL;
@@ -599,10 +615,20 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
     pSampleConfiguration->channelInfo.pCertPath = pSampleConfiguration->pCaCertPath;
     pSampleConfiguration->channelInfo.messageTtl = 0; // Default is 60 seconds
 
+    pSampleConfiguration->signalingClientCallbacks.version = SIGNALING_CLIENT_CALLBACKS_CURRENT_VERSION;
+    pSampleConfiguration->signalingClientCallbacks.errorReportFn = signalingClientError;
+    pSampleConfiguration->signalingClientCallbacks.stateChangeFn = signalingClientStateChanged;
+    pSampleConfiguration->signalingClientCallbacks.customData = (UINT64)pSampleConfiguration;
+    pSampleConfiguration->signalingClientCallbacks.messageReceivedFn = masterMessageReceived;
+
+    pSampleConfiguration->clientInfo.version = SIGNALING_CLIENT_INFO_CURRENT_VERSION;
+
     ATOMIC_STORE_BOOL(&pSampleConfiguration->interrupted, FALSE);
     ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, FALSE);
     ATOMIC_STORE_BOOL(&pSampleConfiguration->appTerminateFlag, FALSE);
     ATOMIC_STORE_BOOL(&pSampleConfiguration->updatingSampleStreamingSessionList, FALSE);
+
+    ATOMIC_STORE_BOOL(&pSampleConfiguration->recreateSignalingClient, FALSE);
 
 CleanUp:
 
@@ -671,6 +697,7 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
     PSampleStreamingSession pSampleStreamingSession = NULL;
     UINT32 i;
     BOOL locked = FALSE;
+    SIGNALING_CLIENT_STATE signalingClientState;
 
     CHK(pSampleConfiguration != NULL, STATUS_NULL_ARG);
 
@@ -678,7 +705,6 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
     locked = TRUE;
 
     while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->interrupted)) {
-
         // scan and cleanup terminated streaming session
         for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
             if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->sampleStreamingSessionList[i]->terminateFlag)) {
@@ -700,6 +726,27 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
 
         // periodically wake up and clean up terminated streaming session
         CVAR_WAIT(pSampleConfiguration->cvar, pSampleConfiguration->sampleConfigurationObjLock, 5 * HUNDREDS_OF_NANOS_IN_A_SECOND);
+
+        // Check if we need to re-create the signaling client on-the-fly
+        if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->recreateSignalingClient) &&
+            STATUS_SUCCEEDED(freeSignalingClient(&pSampleConfiguration->signalingClientHandle)) &&
+            STATUS_SUCCEEDED(createSignalingClientSync(&pSampleConfiguration->clientInfo,
+                    &pSampleConfiguration->channelInfo,
+                    &pSampleConfiguration->signalingClientCallbacks,
+                    pSampleConfiguration->pCredentialProvider,
+                    &pSampleConfiguration->signalingClientHandle))) {
+            // Re-set the variable again
+            ATOMIC_STORE_BOOL(&pSampleConfiguration->recreateSignalingClient, FALSE);
+        }
+
+        // Check the signaling client state and connect if needed
+        if (IS_VALID_SIGNALING_CLIENT_HANDLE(pSampleConfiguration->signalingClientHandle)) {
+            CHK_STATUS(signalingClientGetCurrentState(pSampleConfiguration->signalingClientHandle, &signalingClientState));
+            if (signalingClientState == SIGNALING_CLIENT_STATE_READY) {
+                UNUSED_PARAM(signalingClientConnectSync(pSampleConfiguration->signalingClientHandle));
+            }
+        }
+
     }
 
 CleanUp:
@@ -715,7 +762,6 @@ CleanUp:
 STATUS genCerts(PSampleConfiguration pConfig)
 {
     STATUS retStatus = STATUS_SUCCESS;
-#ifdef APP_PREGEN_CERTS
     X509* pCert = NULL;
     EVP_PKEY* pKey = NULL;
 
@@ -723,13 +769,9 @@ STATUS genCerts(PSampleConfiguration pConfig)
 
     MEMSET(&(pConfig->rtcConfig), 0x00, SIZEOF(RtcConfiguration));
     pConfig->rtcConfig.certificates[0].pCertificate = (PBYTE)pCert;
-    pConfig->rtcConfig.certificates[0].certificateSize = 0;
     pConfig->rtcConfig.certificates[0].pPrivateKey = (PBYTE)pKey;
-    pConfig->rtcConfig.certificates[0].privateKeySize = 0;
 
 CleanUp:
     CHK_LOG_ERR_NV(retStatus);
-#endif
     return retStatus;
 }
-
