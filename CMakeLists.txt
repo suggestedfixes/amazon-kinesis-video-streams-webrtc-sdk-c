@@ -458,6 +458,13 @@ target_link_libraries(kvsWebrtcClientViewer kvsWebrtcClient
 target_compile_options(kvsWebrtcClient PUBLIC -O3)
 target_compile_options(kvsWebrtcSignalingClient PUBLIC -O3)
 
+find_package(Threads)
+add_executable(
+  kvstest
+  ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/kvstest.c
+)
+target_link_libraries(kvstest ${GST_SAMPLE_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
+
 if(COMPILER_WARNINGS)
   target_compile_options(kvsWebrtcClient PUBLIC -Wall -Werror -pedantic -Wextra -Wno-unknown-warning-option)
   target_compile_options(kvsWebrtcSignalingClient PUBLIC -Wall -Werror -pedantic -Wextra -Wno-unknown-warning-option)
