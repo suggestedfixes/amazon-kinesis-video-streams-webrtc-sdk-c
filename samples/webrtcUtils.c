@@ -728,13 +728,11 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
         CVAR_WAIT(pSampleConfiguration->cvar, pSampleConfiguration->sampleConfigurationObjLock, 5 * HUNDREDS_OF_NANOS_IN_A_SECOND);
 
         // Check if we need to re-create the signaling client on-the-fly
-        if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->recreateSignalingClient) &&
-            STATUS_SUCCEEDED(freeSignalingClient(&pSampleConfiguration->signalingClientHandle)) &&
-            STATUS_SUCCEEDED(createSignalingClientSync(&pSampleConfiguration->clientInfo,
-                    &pSampleConfiguration->channelInfo,
-                    &pSampleConfiguration->signalingClientCallbacks,
-                    pSampleConfiguration->pCredentialProvider,
-                    &pSampleConfiguration->signalingClientHandle))) {
+        if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->recreateSignalingClient) && STATUS_SUCCEEDED(freeSignalingClient(&pSampleConfiguration->signalingClientHandle)) && STATUS_SUCCEEDED(createSignalingClientSync(&pSampleConfiguration->clientInfo,
+                                                                                                                                                                           &pSampleConfiguration->channelInfo,
+                                                                                                                                                                           &pSampleConfiguration->signalingClientCallbacks,
+                                                                                                                                                                           pSampleConfiguration->pCredentialProvider,
+                                                                                                                                                                           &pSampleConfiguration->signalingClientHandle))) {
             // Re-set the variable again
             ATOMIC_STORE_BOOL(&pSampleConfiguration->recreateSignalingClient, FALSE);
         }
@@ -746,7 +744,6 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
                 UNUSED_PARAM(signalingClientConnectSync(pSampleConfiguration->signalingClientHandle));
             }
         }
-
     }
 
 CleanUp:

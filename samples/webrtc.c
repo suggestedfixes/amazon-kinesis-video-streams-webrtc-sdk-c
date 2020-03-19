@@ -81,6 +81,9 @@ VOID cleanGst(GMainLoop* loop, GstElement* pipeline, GstBus* bus,
             gst_message_unref(msg);
         }
     }
+    if (gst_is_initialized()) {
+        gst_deinit();
+    }
 }
 
 GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
@@ -258,6 +261,9 @@ PVOID sendGstreamerAudioVideo(PVOID args)
     // recreate gstreamer pipeline on error or eof if enabled
     // blocks on g_main_loop_run
     do {
+        if (!gst_is_initialized()) {
+            gst_init(NULL, NULL);
+        }
         gstCleaned = FALSE;
         pipeline = gst_parse_launch(appGstStr, &error);
 
@@ -312,6 +318,7 @@ CleanUp:
     }
     cleanGst(main_loop, pipeline, bus, msg, gstCleaned);
     CHK_LOG_ERR_NV(retStatus);
+    ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, FALSE);
     return (PVOID)(ULONG_PTR)retStatus;
 }
 
@@ -432,24 +439,22 @@ CleanUp:
     return (PVOID)(ULONG_PTR)retStatus;
 }
 
-INT32 main(INT32 argc, CHAR* argv[])
+void trampoline(CHAR* argv[])
 {
     STATUS retStatus = STATUS_SUCCESS;
     SignalingClientCallbacks signalingClientCallbacks;
     SignalingClientInfo clientInfo;
     PSampleConfiguration pSampleConfiguration = NULL;
 
-    signal(SIGINT, sigintHandler);
+    if (!gst_is_initialized()) {
+        gst_init(NULL, NULL);
+    }
 
-    // do trickle-ice by default
-    printf("[KVS GStreamer Master] Using trickleICE by default\n");
-
-    CHK_STATUS(createSampleConfiguration(argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME,
+    CHK_STATUS(createSampleConfiguration(argv[1],
         SIGNALING_CHANNEL_ROLE_TYPE_MASTER,
         APP_TRICKLE_ICE, APP_TURN,
         &pSampleConfiguration));
-    printf("[KVS GStreamer Master] Created signaling channel %s\n",
-        (argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME));
+    printf("[KVS GStreamer Master] Created signaling channel %s\n", argv[1]);
 
     pSampleConfiguration->videoSource = sendGstreamerAudioVideo;
     pSampleConfiguration->mediaType = SAMPLE_STREAMING_VIDEO_ONLY;
@@ -463,25 +468,6 @@ INT32 main(INT32 argc, CHAR* argv[])
     }
 
     pSampleConfiguration->customData = (UINT64)pSampleConfiguration;
-
-    /* Initialize GStreamer */
-    gst_init(&argc, &argv);
-    printf("[KVS Gstreamer Master] Finished initializing GStreamer\n");
-
-    if (argc > 2) {
-        if (STRCMP(argv[2], "video-only") == 0) {
-            pSampleConfiguration->mediaType = SAMPLE_STREAMING_VIDEO_ONLY;
-            printf("[KVS Gstreamer Master] Streaming video only\n");
-        } else if (STRCMP(argv[2], "audio-video") == 0) {
-            pSampleConfiguration->mediaType = SAMPLE_STREAMING_AUDIO_VIDEO;
-            printf("[KVS Gstreamer Master] Streaming audio and video\n");
-        } else {
-            DLOGD("Unrecognized streaming type. Default to video-only");
-            printf("[KVS Gstreamer Master] Streaming video only\n");
-        }
-    } else {
-        printf("[KVS Gstreamer Master] Streaming video only\n");
-    }
 
     switch (pSampleConfiguration->mediaType) {
     case SAMPLE_STREAMING_VIDEO_ONLY:
@@ -518,7 +504,7 @@ INT32 main(INT32 argc, CHAR* argv[])
 
     printf("[KVS Gstreamer Master] Beginning streaming...check the stream over "
            "channel %s\n",
-        (argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME));
+        argv[1]);
 
     gSampleConfiguration = pSampleConfiguration;
 
@@ -546,5 +532,24 @@ CleanUp:
         CHK_LOG_ERR_NV(freeSampleConfiguration(&pSampleConfiguration));
     }
     printf("[KVS Gstreamer Master] Cleanup done\n");
-    return (INT32)retStatus;
+}
+
+int main(int argc, char** argv)
+{
+
+    if (argc < 2) {
+        printf("Usage: program channel\n");
+        return 0;
+    }
+
+    TID trampolineId;
+    signal(SIGINT, sigintHandler);
+
+    for (;;) {
+        THREAD_CREATE(&trampolineId, trampoline, (PVOID)argv);
+        THREAD_JOIN(trampolineId, NULL);
+        THREAD_SLEEP(HUNDREDS_OF_NANOS_IN_A_SECOND);
+    }
+
+    return 0;
 }
