@@ -55,6 +55,7 @@ typedef struct {
     volatile ATOMIC_BOOL updatingSampleStreamingSessionList;
     volatile ATOMIC_BOOL recreateSignalingClient;
     volatile SIZE_T streamingSessionListReadingThreadCount;
+    BOOL useTestSrc;
     ChannelInfo channelInfo;
     PCHAR pCaCertPath;
     PAwsCredentialProvider pCredentialProvider;
