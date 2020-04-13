@@ -289,6 +289,14 @@ if(GST_FOUND)
   )
   target_link_libraries(webrtc kvsWebrtcClient
                         kvsWebrtcSignalingClient ${GST_SAMPLE_LIBRARIES})
+ 
+  add_executable(
+    webrtcMonitor
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/webrtcUtils.c
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/webrtcMonitor.c
+  )
+  target_link_libraries(webrtcMonitor kvsWebrtcClient
+                        kvsWebrtcSignalingClient ${GST_SAMPLE_LIBRARIES})
 endif()
 
 if(BUILD_TEST)

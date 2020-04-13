@@ -1,4 +1,4 @@
-#define LOG_CLASS "WebRtcSamples"
+
 #include "webrtc.h"
 
 PSampleConfiguration gSampleConfiguration = NULL;
@@ -194,6 +194,11 @@ STATUS handleAnswer(PSampleConfiguration pSampleConfiguration, PSampleStreamingS
 CleanUp:
 
     CHK_LOG_ERR_NV(retStatus);
+
+    if (retStatus == STATUS_SUCCESS) {
+        ATOMIC_STORE_BOOL(&pSampleConfiguration->answerReceived, TRUE);
+        CVAR_BROADCAST(pSampleConfiguration->signalAnswer);
+    }
 
     return retStatus;
 }
@@ -600,7 +605,9 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
     pSampleConfiguration->videoSenderTid = INVALID_TID_VALUE;
     pSampleConfiguration->signalingClientHandle = INVALID_SIGNALING_CLIENT_HANDLE_VALUE;
     pSampleConfiguration->sampleConfigurationObjLock = MUTEX_CREATE(TRUE);
+    pSampleConfiguration->answerLock = MUTEX_CREATE(TRUE);
     pSampleConfiguration->cvar = CVAR_CREATE();
+    pSampleConfiguration->signalAnswer = CVAR_CREATE();
     pSampleConfiguration->trickleIce = trickleIce;
     pSampleConfiguration->useTurn = useTurn;
 

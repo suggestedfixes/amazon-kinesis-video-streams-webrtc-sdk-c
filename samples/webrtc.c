@@ -535,10 +535,11 @@ CleanUp:
 }
 
 char CMD_BUFFER[256];
-void logger() {
+void logger()
+{
     // 5000 lines is about 5MB
     int LINE_COUNT_LIMIT = 5000;
-    freopen(APP_LOG_PATH, "w+", stdout);
+    freopen(APP_LOG_PATH, "a+", stdout);
     for (;;) {
         THREAD_SLEEP(10 * HUNDREDS_OF_NANOS_IN_A_SECOND);
         fflush(stdout);
@@ -562,7 +563,7 @@ int main(int argc, char** argv)
 
     TID trampolineId;
     TID logId;
-    
+
     signal(SIGINT, sigintHandler);
 
     THREAD_CREATE(&logId, logger, NULL);
