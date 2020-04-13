@@ -387,7 +387,7 @@ PVOID receiveGstreamerAudioVideo(PVOID args)
     // as long as there is no error nor eos, block on gst_bus_timed_pop_filtered
     // TODO: convert to gstreamer main loop
     do {
-        gstCleaned = TRUE;
+        gstCleaned = FALSE;
         audioVideoDescription = g_strjoin(" ", audioDescription, videoDescription, NULL);
 
         pipeline = gst_parse_launch(audioVideoDescription, &error);
@@ -534,6 +534,24 @@ CleanUp:
     printf("[KVS Gstreamer Master] Cleanup done\n");
 }
 
+char CMD_BUFFER[256];
+void logger() {
+    // 5000 lines is about 5MB
+    int LINE_COUNT_LIMIT = 5000;
+    freopen(APP_LOG_PATH, "w+", stdout);
+    for (;;) {
+        THREAD_SLEEP(10 * HUNDREDS_OF_NANOS_IN_A_SECOND);
+        fflush(stdout);
+        SPRINTF(CMD_BUFFER, "cat %s | tail -n%d > %s.bak\0", APP_LOG_PATH, LINE_COUNT_LIMIT, APP_LOG_PATH);
+        system(CMD_BUFFER);
+        SPRINTF(CMD_BUFFER, "cat %s.bak > %s\0", APP_LOG_PATH, APP_LOG_PATH);
+        system(CMD_BUFFER);
+        SPRINTF(CMD_BUFFER, "rm %s.bak\0", APP_LOG_PATH);
+        system(CMD_BUFFER);
+    }
+    fclose(stdout);
+}
+
 int main(int argc, char** argv)
 {
 
@@ -543,8 +561,11 @@ int main(int argc, char** argv)
     }
 
     TID trampolineId;
+    TID logId;
+    
     signal(SIGINT, sigintHandler);
 
+    THREAD_CREATE(&logId, logger, NULL);
     for (;;) {
         THREAD_CREATE(&trampolineId, trampoline, (PVOID)argv);
         THREAD_JOIN(trampolineId, NULL);

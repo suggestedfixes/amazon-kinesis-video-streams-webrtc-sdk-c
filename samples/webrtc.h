@@ -38,6 +38,7 @@ extern "C" {
 
 #define APP_PREGEN_CERTS TRUE
 #define APP_GENCERTBITS_OVERRIDE 1024
+#define APP_LOG_PATH "/tmp/webrtc.log"
 
 typedef enum {
     SAMPLE_STREAMING_VIDEO_ONLY,

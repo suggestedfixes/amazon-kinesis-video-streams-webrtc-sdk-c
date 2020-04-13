@@ -10,6 +10,8 @@ VOID sigintHandler(INT32 sigNum)
         ATOMIC_STORE_BOOL(&gSampleConfiguration->interrupted, TRUE);
         CVAR_BROADCAST(gSampleConfiguration->cvar);
     }
+    fflush(stdout);
+    fclose(stdout);
     exit(0);
 }
 
