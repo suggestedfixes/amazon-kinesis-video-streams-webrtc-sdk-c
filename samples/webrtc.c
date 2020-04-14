@@ -317,7 +317,7 @@ CleanUp:
         g_clear_error(&error);
     }
     cleanGst(main_loop, pipeline, bus, msg, gstCleaned);
-    CHK_LOG_ERR_NV(retStatus);
+    CHK_LOG_ERR(retStatus);
     ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, FALSE);
     return (PVOID)(ULONG_PTR)retStatus;
 }
@@ -435,7 +435,7 @@ CleanUp:
     }
 
     cleanGst(NULL, pipeline, bus, msg, gstCleaned);
-    CHK_LOG_ERR_NV(retStatus);
+    CHK_LOG_ERR(retStatus);
     return (PVOID)(ULONG_PTR)retStatus;
 }
 
@@ -516,7 +516,7 @@ void trampoline(CHAR* argv[])
 CleanUp:
 
     printf("[KVS GStreamer Master] Cleaning up....\n");
-    CHK_LOG_ERR_NV(retStatus);
+    CHK_LOG_ERR(retStatus);
 
     if (pSampleConfiguration != NULL) {
         // Kick of the termination sequence
@@ -527,9 +527,9 @@ CleanUp:
             THREAD_JOIN(pSampleConfiguration->videoSenderTid, NULL);
         }
 
-        CHK_LOG_ERR_NV(
+        CHK_LOG_ERR(
             freeSignalingClient(&pSampleConfiguration->signalingClientHandle));
-        CHK_LOG_ERR_NV(freeSampleConfiguration(&pSampleConfiguration));
+        CHK_LOG_ERR(freeSampleConfiguration(&pSampleConfiguration));
     }
     printf("[KVS Gstreamer Master] Cleanup done\n");
 }
