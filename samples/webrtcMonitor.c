@@ -1,7 +1,7 @@
 #include "webrtc.h"
 
-#define APP_WEBRTC_CHECK_PERIOD 60
-#define APP_WEBRTC_ANSWER_TIMEOUT 30
+#define APP_WEBRTC_CHECK_PERIOD   60 
+#define APP_WEBRTC_ANSWER_TIMEOUT 40 
 
 BOOL checkWebrtcStatus(int argc, char** argv)
 {
@@ -17,12 +17,12 @@ BOOL checkWebrtcStatus(int argc, char** argv)
     signal(SIGINT, sigintHandler);
 
     // do trickle-ice by default
-    printf("[KVS Master] Using trickleICE by default\n");
+    printf("[KVS Viewer] Using trickleICE by default\n");
 
     retStatus = createSampleConfiguration(argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME,
         SIGNALING_CHANNEL_ROLE_TYPE_VIEWER,
-        TRUE,
-        TRUE,
+        APP_TRICKLE_ICE,
+        FALSE,
         &pSampleConfiguration);
     if (retStatus != STATUS_SUCCESS) {
         printf("[KVS Viewer] createSampleConfiguration(): operation returned status code: 0x%08x \n", retStatus);
@@ -33,7 +33,7 @@ BOOL checkWebrtcStatus(int argc, char** argv)
     // Initialize KVS WebRTC. This must be done before anything else, and must only be done once.
     retStatus = initKvsWebRtc();
     if (retStatus != STATUS_SUCCESS) {
-        printf("[KVS Master] initKvsWebRtc(): operation returned status code: 0x%08x \n", retStatus);
+        printf("[KVS Viewer] initKvsWebRtc(): operation returned status code: 0x%08x \n", retStatus);
         goto CleanUp;
     }
 
@@ -94,6 +94,14 @@ BOOL checkWebrtcStatus(int argc, char** argv)
     }
     printf("[KVS Viewer] Completed setting local description\n");
 
+    retStatus = transceiverOnFrame(pSampleStreamingSession->pVideoRtcRtpTransceiver,
+                                   (UINT64) pSampleStreamingSession,
+                                    sampleFrameHandler);
+    if (retStatus != STATUS_SUCCESS) {
+        printf("[KVS Viewer] transceiverOnFrame(): operation returned status code: 0x%08x \n", retStatus);
+        goto CleanUp;
+    }
+
     printf("[KVS Viewer] Generating JSON of session description....");
     retStatus = serializeSessionDescriptionInit(&offerSessionDescriptionInit, NULL, &buffLen);
     if (retStatus != STATUS_SUCCESS) {
@@ -124,20 +132,19 @@ BOOL checkWebrtcStatus(int argc, char** argv)
         goto CleanUp;
     }
 
-    MUTEX_LOCK(pSampleConfiguration->answerLock);
-    CVAR_WAIT(pSampleConfiguration->signalAnswer, pSampleConfiguration->answerLock, APP_WEBRTC_ANSWER_TIMEOUT * HUNDREDS_OF_NANOS_IN_A_SECOND);
+    MUTEX_LOCK(pSampleConfiguration->videoFrameLock);
+    CVAR_WAIT(pSampleConfiguration->signalVideoFrame, pSampleConfiguration->videoFrameLock, APP_WEBRTC_ANSWER_TIMEOUT * HUNDREDS_OF_NANOS_IN_A_SECOND);
 
-    if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->answerReceived)) {
-        DLOGD("Monitor received an answer in time.\n");
+    if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->videoFrameReceived)) {
+        DLOGD("Monitor received a video frame in time.\n");
         retStatus = STATUS_SUCCESS;
         alive = TRUE;
     } else {
-        DLOGD("Monitor did not receive an answer in time.\n");
+        DLOGD("Monitor did not receive a video frame in time.\n");
         retStatus = STATUS_OPERATION_TIMED_OUT;
         alive = FALSE;
     }
-    MUTEX_UNLOCK(pSampleConfiguration->answerLock);
-
+    MUTEX_UNLOCK(pSampleConfiguration->videoFrameLock);
 CleanUp:
 
     if (retStatus != STATUS_SUCCESS) {
@@ -153,12 +160,12 @@ CleanUp:
     if (pSampleConfiguration != NULL) {
         retStatus = freeSignalingClient(&pSampleConfiguration->signalingClientHandle);
         if (retStatus != STATUS_SUCCESS) {
-            printf("[KVS Master] freeSignalingClient(): operation returned status code: 0x%08x \n", retStatus);
+            printf("[KVS Viewer] freeSignalingClient(): operation returned status code: 0x%08x \n", retStatus);
         }
 
         retStatus = freeSampleConfiguration(&pSampleConfiguration);
         if (retStatus != STATUS_SUCCESS) {
-            printf("[KVS Master] freeSampleConfiguration(): operation returned status code: 0x%08x \n", retStatus);
+            printf("[KVS Viewer] freeSampleConfiguration(): operation returned status code: 0x%08x \n", retStatus);
         }
     }
     return alive;

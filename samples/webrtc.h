@@ -54,7 +54,7 @@ typedef struct {
     volatile ATOMIC_BOOL mediaThreadStarted;
     volatile ATOMIC_BOOL updatingSampleStreamingSessionList;
     volatile ATOMIC_BOOL recreateSignalingClient;
-    volatile ATOMIC_BOOL answerReceived;
+    volatile ATOMIC_BOOL videoFrameReceived;
     volatile SIZE_T streamingSessionListReadingThreadCount;
     ChannelInfo channelInfo;
     PCHAR pCaCertPath;
@@ -73,9 +73,9 @@ typedef struct {
     RtcOnDataChannel onDataChannel;
 
     MUTEX sampleConfigurationObjLock;
-    MUTEX answerLock;
+    MUTEX videoFrameLock;
     CVAR cvar;
-    CVAR signalAnswer;
+    CVAR signalVideoFrame;
     BOOL trickleIce;
     BOOL useTurn;
     UINT64 customData;

@@ -1,4 +1,4 @@
-
+#define LOG_CLASS "WebRTC"
 #include "webrtc.h"
 
 PSampleConfiguration gSampleConfiguration = NULL;
@@ -196,11 +196,6 @@ STATUS handleAnswer(PSampleConfiguration pSampleConfiguration, PSampleStreamingS
 CleanUp:
 
     CHK_LOG_ERR(retStatus);
-
-    if (retStatus == STATUS_SUCCESS) {
-        ATOMIC_STORE_BOOL(&pSampleConfiguration->answerReceived, TRUE);
-        CVAR_BROADCAST(pSampleConfiguration->signalAnswer);
-    }
 
     return retStatus;
 }
@@ -494,8 +489,10 @@ CleanUp:
 
 VOID sampleFrameHandler(UINT64 customData, PFrame pFrame)
 {
-    UNUSED_PARAM(customData);
+    PSampleStreamingSession pSampleStreamingSession = (PSampleStreamingSession)customData;
     DLOGV("Frame received. TrackId: %" PRIu64 ", Size: %u, Flags %u", pFrame->trackId, pFrame->size, pFrame->flags);
+    ATOMIC_STORE_BOOL(&pSampleStreamingSession->pSampleConfiguration->videoFrameReceived, TRUE);
+    CVAR_BROADCAST(pSampleStreamingSession->pSampleConfiguration->signalVideoFrame);
 }
 
 VOID sampleBandwidthEstimationHandler(UINT64 customData, DOUBLE maxiumBitrate)
@@ -607,9 +604,9 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
     pSampleConfiguration->videoSenderTid = INVALID_TID_VALUE;
     pSampleConfiguration->signalingClientHandle = INVALID_SIGNALING_CLIENT_HANDLE_VALUE;
     pSampleConfiguration->sampleConfigurationObjLock = MUTEX_CREATE(TRUE);
-    pSampleConfiguration->answerLock = MUTEX_CREATE(TRUE);
+    pSampleConfiguration->videoFrameLock = MUTEX_CREATE(TRUE);
     pSampleConfiguration->cvar = CVAR_CREATE();
-    pSampleConfiguration->signalAnswer = CVAR_CREATE();
+    pSampleConfiguration->signalVideoFrame = CVAR_CREATE();
     pSampleConfiguration->trickleIce = trickleIce;
     pSampleConfiguration->useTurn = useTurn;
 
