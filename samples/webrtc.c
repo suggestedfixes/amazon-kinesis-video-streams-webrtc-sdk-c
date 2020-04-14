@@ -534,9 +534,11 @@ void logger()
     // 5000 lines is about 5MB
     int LINE_COUNT_LIMIT = 5000;
     freopen(APP_LOG_PATH, "a+", stdout);
+    freopen(APP_LOG_PATH, "a+", stderr);
     for (;;) {
         THREAD_SLEEP(10 * HUNDREDS_OF_NANOS_IN_A_SECOND);
         fflush(stdout);
+        fflush(stderr);
         SPRINTF(CMD_BUFFER, "cat %s | tail -n%d > %s.bak\0", APP_LOG_PATH, LINE_COUNT_LIMIT, APP_LOG_PATH);
         system(CMD_BUFFER);
         SPRINTF(CMD_BUFFER, "cat %s.bak > %s\0", APP_LOG_PATH, APP_LOG_PATH);
@@ -545,6 +547,7 @@ void logger()
         system(CMD_BUFFER);
     }
     fclose(stdout);
+    fclose(stderr);
 }
 
 int main(int argc, char** argv)

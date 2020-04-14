@@ -11,7 +11,9 @@ VOID sigintHandler(INT32 sigNum)
         CVAR_BROADCAST(gSampleConfiguration->cvar);
     }
     fflush(stdout);
+    fflush(stderr);
     fclose(stdout);
+    fclose(stderr);
     exit(0);
 }
 
