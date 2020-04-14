@@ -1,5 +1,8 @@
 #include "webrtc.h"
 
+#define APP_WEBRTC_CHECK_PERIOD 60
+#define APP_WEBRTC_ANSWER_TIMEOUT 30
+
 BOOL checkWebrtcStatus(int argc, char** argv)
 {
     STATUS retStatus = STATUS_SUCCESS;
@@ -109,8 +112,6 @@ BOOL checkWebrtcStatus(int argc, char** argv)
         goto CleanUp;
     }
 
-    printf("Completed\n");
-
     message.version = SIGNALING_MESSAGE_CURRENT_VERSION;
     message.messageType = SIGNALING_MESSAGE_TYPE_OFFER;
     STRCPY(message.peerClientId, SAMPLE_MASTER_CLIENT_ID);
@@ -124,14 +125,14 @@ BOOL checkWebrtcStatus(int argc, char** argv)
     }
 
     MUTEX_LOCK(pSampleConfiguration->answerLock);
-    CVAR_WAIT(pSampleConfiguration->signalAnswer, pSampleConfiguration->answerLock, 15 * HUNDREDS_OF_NANOS_IN_A_SECOND);
+    CVAR_WAIT(pSampleConfiguration->signalAnswer, pSampleConfiguration->answerLock, APP_WEBRTC_ANSWER_TIMEOUT * HUNDREDS_OF_NANOS_IN_A_SECOND);
 
     if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->answerReceived)) {
-        printf("<success>\n");
+        DLOGD("Monitor received an answer in time.\n");
         retStatus = STATUS_SUCCESS;
         alive = TRUE;
     } else {
-        printf("<fail>\n");
+        DLOGD("Monitor did not receive an answer in time.\n");
         retStatus = STATUS_OPERATION_TIMED_OUT;
         alive = FALSE;
     }
@@ -171,7 +172,7 @@ int main(int argc, char** argv)
     }
     system(argv[2]);
     for (;;) {
-        THREAD_SLEEP(30 * HUNDREDS_OF_NANOS_IN_A_SECOND);
+        THREAD_SLEEP(APP_WEBRTC_CHECK_PERIOD * HUNDREDS_OF_NANOS_IN_A_SECOND);
         if (!checkWebrtcStatus(argc, argv)) {
             system(argv[2]);
         }

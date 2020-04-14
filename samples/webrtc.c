@@ -81,9 +81,6 @@ VOID cleanGst(GMainLoop* loop, GstElement* pipeline, GstBus* bus,
             gst_message_unref(msg);
         }
     }
-    if (gst_is_initialized()) {
-        gst_deinit();
-    }
 }
 
 GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
@@ -261,9 +258,6 @@ PVOID sendGstreamerAudioVideo(PVOID args)
     // recreate gstreamer pipeline on error or eof if enabled
     // blocks on g_main_loop_run
     do {
-        if (!gst_is_initialized()) {
-            gst_init(NULL, NULL);
-        }
         gstCleaned = FALSE;
         pipeline = gst_parse_launch(appGstStr, &error);
 
