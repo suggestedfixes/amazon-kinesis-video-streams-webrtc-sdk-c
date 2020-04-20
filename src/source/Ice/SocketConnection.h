@@ -13,12 +13,23 @@ extern "C" {
 #define SSL_WRITE_RETRY_DELAY                       10 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND
 #define SOCKET_SEND_RETRY_TIMEOUT_MICRO_SECOND      500000
 
+#define CLOSE_SOCKET_IF_CANT_RETRY(e,ps)             if ((e) != EAGAIN && \
+                                                        (e) != EWOULDBLOCK && \
+                                                        (e) != EINTR && \
+                                                        (e) != EINPROGRESS && \
+                                                        (e) != EALREADY) { \
+                                                        DLOGD("Close socket %d", (ps)->localSocket); \
+                                                        ATOMIC_STORE_BOOL(&(ps)->connectionClosed, TRUE); \
+                                                    }
+
 typedef STATUS (*ConnectionDataAvailableFunc)(UINT64, struct __SocketConnection*, PBYTE, UINT32, PKvsIpAddress, PKvsIpAddress);
 
 typedef struct __SocketConnection SocketConnection;
 struct __SocketConnection {
-    volatile ATOMIC_BOOL connectionClosed; // for tcp;
-    volatile ATOMIC_BOOL receiveData; // for tcp;
+    /* Indicate whether this socket is marked for cleanup */
+    volatile ATOMIC_BOOL connectionClosed;
+    /* Process incoming bits */
+    volatile ATOMIC_BOOL receiveData;
     INT32 localSocket;
     KVS_SOCKET_PROTOCOL protocol;
     KvsIpAddress peerIpAddr;
@@ -111,6 +122,15 @@ STATUS socketConnectionReadData(PSocketConnection, PBYTE, UINT32, PUINT32);
  * @return - STATUS - status of execution
  */
 STATUS socketConnectionClosed(PSocketConnection);
+
+/**
+ * Check if PSocketConnection is closed
+ *
+ * @param - PSocketConnection - IN - the SocketConnection struct
+ *
+ * @return - BOOL - whether connection is closed
+ */
+BOOL socketConnectionIsClosed(PSocketConnection);
 
 /**
  * Return whether socket has been connected. Return TRUE for UDP sockets.

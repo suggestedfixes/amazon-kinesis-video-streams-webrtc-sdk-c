@@ -950,34 +950,26 @@ STATUS iceAgentSendStunPacket(PStunPacket pStunPacket, PBYTE password, UINT32 pa
     STATUS retStatus = STATUS_SUCCESS;
     UINT32 stunPacketSize = STUN_PACKET_ALLOCATION_SIZE;
     BYTE stunPacketBuffer[STUN_PACKET_ALLOCATION_SIZE];
-    KvsIpAddress destAddr;
-    SocketConnection socketConnection;
-    BOOL isRelay = FALSE;
     PIceCandidatePair pIceCandidatePair = NULL;
 
     // Assuming holding pIceAgent->lock
 
     CHK(pStunPacket != NULL && pIceAgent != NULL && pLocalCandidate != NULL && pDestAddr != NULL, STATUS_NULL_ARG);
 
-    // Construct context
-    // Stun Binding Indication seems to not expect any response. Therefore not storing transactionId
     CHK_STATUS(iceUtilsPackageStunPacket(pStunPacket, password, passwordLen, stunPacketBuffer, &stunPacketSize));
-    socketConnection = *pLocalCandidate->pSocketConnection;
-    destAddr = *pDestAddr;
-    isRelay = pLocalCandidate->iceCandidateType == ICE_CANDIDATE_TYPE_RELAYED;
-
     retStatus = iceUtilsSendData((PBYTE) stunPacketBuffer,
                                  stunPacketSize,
-                                 &destAddr,
-                                 &socketConnection,
+                                 pDestAddr,
+                                 pLocalCandidate->pSocketConnection,
                                  pIceAgent->turnConnectionTracker.pTurnConnection,
-                                 isRelay);
+                                 pLocalCandidate->iceCandidateType == ICE_CANDIDATE_TYPE_RELAYED);
 
     if (STATUS_FAILED(retStatus)) {
-        DLOGW("iceUtilsSendData failed with 0x%08x", retStatus);
+        DLOGW("iceUtilsSendData failed with 0x%08x. Mark candidate pair as failed.", retStatus);
         retStatus = STATUS_SUCCESS;
 
-        // Update iceCandidatePair state to failed. pIceCandidatePair could no longer exist.
+        /* Update iceCandidatePair state to failed.
+         * pIceCandidatePair could no longer exist. */
         CHK_STATUS(findIceCandidatePairWithLocalSocketConnectionAndRemoteAddr(pIceAgent, pLocalCandidate->pSocketConnection, pDestAddr, TRUE, &pIceCandidatePair));
 
         if (pIceCandidatePair != NULL) {
@@ -1847,6 +1839,8 @@ STATUS handleStunPacket(PIceAgent pIceAgent, PBYTE pBuffer, UINT32 bufferLen, PS
     UINT32 priority = 0;
     PIceCandidate pIceCandidate = NULL;
     CHAR ipAddrStr[KVS_IP_ADDRESS_STRING_BUFFER_LEN], ipAddrStr2[KVS_IP_ADDRESS_STRING_BUFFER_LEN];
+    PCHAR hexStr = NULL;
+    UINT32 hexStrLen = 0;
 
     // need to determine stunPacketType before deserializing because different password should be used depending on the packet type
     stunPacketType = (UINT16) getInt16(*((PUINT16) pBuffer));
@@ -1955,7 +1949,12 @@ STATUS handleStunPacket(PIceAgent pIceAgent, PBYTE pBuffer, UINT32 bufferLen, PS
             break;
 
         default:
-            DLOGW("Dropping unrecognized STUN packet. Packet type: 0x%02", stunPacketType);
+            CHK_STATUS(hexEncode(pBuffer, bufferLen, NULL, &hexStrLen));
+            hexStr = MEMCALLOC(1, hexStrLen * SIZEOF(CHAR));
+            CHK(hexStr != NULL, STATUS_NOT_ENOUGH_MEMORY);
+            CHK_STATUS(hexEncode(pBuffer, bufferLen, hexStr, &hexStrLen));
+            DLOGW("Dropping unrecognized STUN packet. Packet type: 0x%02x. Packet content: \n\t%s", stunPacketType, hexStr);
+            MEMFREE(hexStr);
             break;
     }
 
@@ -1979,7 +1978,7 @@ CleanUp:
 STATUS iceAgentCheckPeerReflexiveCandidate(PIceAgent pIceAgent, PKvsIpAddress pIpAddress, UINT32 priority, BOOL isRemote, PSocketConnection pSocketConnection)
 {
     STATUS retStatus = STATUS_SUCCESS;
-    PIceCandidate pIceCandidate = NULL, pLocalIceCandidate = NULL;;
+    PIceCandidate pIceCandidate = NULL, pLocalIceCandidate = NULL;
     BOOL freeIceCandidateOnError = TRUE;
     UINT32 candidateCount;
 
