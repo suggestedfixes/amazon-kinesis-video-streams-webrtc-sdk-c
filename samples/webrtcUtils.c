@@ -1,6 +1,7 @@
 #define LOG_CLASS "WebRTC"
 #include "webrtc.h"
 
+char app_peer_id_charset[30] = "abcdefghijklmnopqrstuvwxyz012\0";
 PSampleConfiguration gSampleConfiguration = NULL;
 
 VOID sigintHandler(INT32 sigNum)
@@ -112,7 +113,7 @@ STATUS signalingClientError(UINT64 customData, STATUS status, PCHAR msg, UINT32 
     // We will force re-create the signaling client on the following errors
     if (status == STATUS_SIGNALING_ICE_CONFIG_REFRESH_FAILED || status == STATUS_SIGNALING_RECONNECT_FAILED) {
         ATOMIC_STORE_BOOL(&pSampleConfiguration->recreateSignalingClient, TRUE);
-        CVAR_BROADCAST(gSampleConfiguration->cvar);
+        CVAR_BROADCAST(pSampleConfiguration->cvar);
     }
 
     return STATUS_SUCCESS;
@@ -373,7 +374,7 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
     if (isMaster) {
         STRCPY(pSampleStreamingSession->peerId, peerId);
     } else {
-        STRCPY(pSampleStreamingSession->peerId, SAMPLE_VIEWER_CLIENT_ID);
+        STRCPY(pSampleStreamingSession->peerId, name_buffer);
     }
     ATOMIC_STORE_BOOL(&pSampleStreamingSession->peerIdReceived, TRUE);
 
@@ -775,4 +776,12 @@ STATUS genCerts(PSampleConfiguration pConfig)
 CleanUp:
     CHK_LOG_ERR(retStatus);
     return retStatus;
+}
+
+VOID genRandomId()
+{
+    for (int i = 0; i < APP_PEER_ID_LENGTH; i++) {
+        name_buffer[i] = app_peer_id_charset[(random() % 29) & 0x1f];
+    }
+    name_buffer[APP_PEER_ID_LENGTH] = 0;
 }

@@ -1,7 +1,8 @@
 #include "webrtc.h"
 
-#define APP_WEBRTC_CHECK_PERIOD   60 
-#define APP_WEBRTC_ANSWER_TIMEOUT 40 
+#define APP_WEBRTC_CHECK_PERIOD 120
+#define APP_WEBRTC_VIDEO_WAIT_TIMEOUT 40
+#define APP_RETRY_COUNT 3
 
 BOOL checkWebrtcStatus(int argc, char** argv)
 {
@@ -10,24 +11,26 @@ BOOL checkWebrtcStatus(int argc, char** argv)
     UINT32 buffLen = 0;
     SignalingMessage message;
     PSampleConfiguration pSampleConfiguration = NULL;
+    gSampleConfiguration = pSampleConfiguration;
     PSampleStreamingSession pSampleStreamingSession = NULL;
     BOOL locked = FALSE;
     BOOL alive = FALSE;
+    int total_sleep = 0;
 
-    signal(SIGINT, sigintHandler);
-
+    genRandomId();
     // do trickle-ice by default
     printf("[KVS Viewer] Using trickleICE by default\n");
 
     retStatus = createSampleConfiguration(argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME,
         SIGNALING_CHANNEL_ROLE_TYPE_VIEWER,
         APP_TRICKLE_ICE,
-        FALSE,
+        TRUE,
         &pSampleConfiguration);
     if (retStatus != STATUS_SUCCESS) {
         printf("[KVS Viewer] createSampleConfiguration(): operation returned status code: 0x%08x \n", retStatus);
         goto CleanUp;
     }
+
     printf("[KVS Viewer] Created signaling channel %s\n", (argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME));
 
     // Initialize KVS WebRTC. This must be done before anything else, and must only be done once.
@@ -41,8 +44,7 @@ BOOL checkWebrtcStatus(int argc, char** argv)
 
     pSampleConfiguration->signalingClientCallbacks.messageReceivedFn = viewerMessageReceived;
 
-    strcpy(pSampleConfiguration->clientInfo.clientId, SAMPLE_VIEWER_CLIENT_ID);
-
+    strcpy(pSampleConfiguration->clientInfo.clientId, name_buffer);
     retStatus = createSignalingClientSync(&pSampleConfiguration->clientInfo, &pSampleConfiguration->channelInfo,
         &pSampleConfiguration->signalingClientCallbacks, pSampleConfiguration->pCredentialProvider,
         &pSampleConfiguration->signalingClientHandle);
@@ -95,8 +97,8 @@ BOOL checkWebrtcStatus(int argc, char** argv)
     printf("[KVS Viewer] Completed setting local description\n");
 
     retStatus = transceiverOnFrame(pSampleStreamingSession->pVideoRtcRtpTransceiver,
-                                   (UINT64) pSampleStreamingSession,
-                                    sampleFrameHandler);
+        (UINT64)pSampleStreamingSession,
+        sampleFrameHandler);
     if (retStatus != STATUS_SUCCESS) {
         printf("[KVS Viewer] transceiverOnFrame(): operation returned status code: 0x%08x \n", retStatus);
         goto CleanUp;
@@ -132,8 +134,13 @@ BOOL checkWebrtcStatus(int argc, char** argv)
         goto CleanUp;
     }
 
-    MUTEX_LOCK(pSampleConfiguration->videoFrameLock);
-    CVAR_WAIT(pSampleConfiguration->signalVideoFrame, pSampleConfiguration->videoFrameLock, APP_WEBRTC_ANSWER_TIMEOUT * HUNDREDS_OF_NANOS_IN_A_SECOND);
+    while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->videoFrameReceived)) {
+        THREAD_SLEEP(HUNDREDS_OF_NANOS_IN_A_SECOND);
+        total_sleep += 1;
+        if (total_sleep >= APP_WEBRTC_VIDEO_WAIT_TIMEOUT) {
+            break;
+        }
+    }
 
     if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->videoFrameReceived)) {
         DLOGD("Monitor received a video frame in time.\n");
@@ -144,7 +151,7 @@ BOOL checkWebrtcStatus(int argc, char** argv)
         retStatus = STATUS_OPERATION_TIMED_OUT;
         alive = FALSE;
     }
-    MUTEX_UNLOCK(pSampleConfiguration->videoFrameLock);
+
 CleanUp:
 
     if (retStatus != STATUS_SUCCESS) {
@@ -177,10 +184,19 @@ int main(int argc, char** argv)
         printf("Usage: program channel cmd\n");
         return 0;
     }
+    srandom(time(NULL));
+    signal(SIGINT, sigintHandler);
     system(argv[2]);
     for (;;) {
         THREAD_SLEEP(APP_WEBRTC_CHECK_PERIOD * HUNDREDS_OF_NANOS_IN_A_SECOND);
-        if (!checkWebrtcStatus(argc, argv)) {
+        BOOL status = FALSE;
+        int retries_left = APP_RETRY_COUNT;
+
+        do {
+            status = checkWebrtcStatus(argc, argv);
+        } while (retries_left-- > 0 && !status);
+
+        if (!status) {
             system(argv[2]);
         }
     }

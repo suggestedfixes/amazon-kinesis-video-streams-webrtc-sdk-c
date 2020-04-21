@@ -40,6 +40,11 @@ extern "C" {
 #define APP_GENCERTBITS_OVERRIDE 1024
 #define APP_LOG_PATH "/tmp/webrtc.log"
 
+#define APP_PEER_ID_LENGTH 10
+
+char app_peer_id_charset[30];
+char name_buffer[32];
+
 typedef enum {
     SAMPLE_STREAMING_VIDEO_ONLY,
     SAMPLE_STREAMING_AUDIO_VIDEO,
@@ -135,6 +140,7 @@ VOID onDataChannel(UINT64, PRtcDataChannel);
 VOID onConnectionStateChange(UINT64, RTC_PEER_CONNECTION_STATE);
 STATUS sessionCleanupWait(PSampleConfiguration);
 STATUS genCerts(PSampleConfiguration pConfig);
+VOID genRandomId();
 
 #ifdef __cplusplus
 }
