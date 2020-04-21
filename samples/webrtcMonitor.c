@@ -4,6 +4,8 @@
 #define APP_WEBRTC_VIDEO_WAIT_TIMEOUT 40
 #define APP_RETRY_COUNT 3
 
+extern gSampleConfiguration;
+
 BOOL checkWebrtcStatus(int argc, char** argv)
 {
     STATUS retStatus = STATUS_SUCCESS;
