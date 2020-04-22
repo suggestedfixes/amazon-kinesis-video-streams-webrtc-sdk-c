@@ -98,6 +98,7 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
     PSampleStreamingSession pSampleStreamingSession = NULL;
     PRtcRtpTransceiver pRtcRtpTransceiver = NULL;
     UINT32 i;
+    UINT64 time = GETTIME();
 
     CHK(pSampleConfiguration != NULL, STATUS_NULL_ARG);
 
@@ -142,15 +143,12 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
                     pRtcRtpTransceiver = pSampleStreamingSession->pAudioRtcRtpTransceiver;
                     frame.presentationTs = pSampleStreamingSession->audioTimestamp;
                     frame.decodingTs = frame.presentationTs;
-                    pSampleStreamingSession->audioTimestamp += SAMPLE_AUDIO_FRAME_DURATION; // assume audio frame size
-                    // is 20ms, which is
-                    // default in opusenc
-
+                    pSampleStreamingSession->audioTimestamp = time;
                 } else {
                     pRtcRtpTransceiver = pSampleStreamingSession->pVideoRtcRtpTransceiver;
                     frame.presentationTs = pSampleStreamingSession->videoTimestamp;
                     frame.decodingTs = frame.presentationTs;
-                    pSampleStreamingSession->videoTimestamp += SAMPLE_VIDEO_FRAME_DURATION; // assume video fps is 30
+                    pSampleStreamingSession->videoTimestamp = time;
                 }
 
                 status = writeFrame(pRtcRtpTransceiver, &frame);
@@ -313,6 +311,7 @@ CleanUp:
     cleanGst(main_loop, pipeline, bus, msg, gstCleaned);
     CHK_LOG_ERR(retStatus);
     ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, FALSE);
+    pSampleConfiguration->videoSenderTid = INVALID_TID_VALUE;
     return (PVOID)(ULONG_PTR)retStatus;
 }
 
@@ -552,7 +551,6 @@ void logger()
 
 int main(int argc, char** argv)
 {
-
     if (argc < 2) {
         printf("Usage: program channel\n");
         return 0;
@@ -563,7 +561,13 @@ int main(int argc, char** argv)
 
     signal(SIGINT, sigintHandler);
 
-    THREAD_CREATE(&logId, logger, NULL);
+    if (argc >= 3) {
+        if (strcmp(argv[2], "nolog") != 0) {
+            THREAD_CREATE(&logId, logger, NULL);
+        }
+    } else {
+        THREAD_CREATE(&logId, logger, NULL);
+    }
     for (;;) {
         THREAD_CREATE(&trampolineId, trampoline, (PVOID)argv);
         THREAD_JOIN(trampolineId, NULL);

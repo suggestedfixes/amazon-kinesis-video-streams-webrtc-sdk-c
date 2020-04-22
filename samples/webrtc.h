@@ -59,7 +59,7 @@ typedef struct {
     volatile ATOMIC_BOOL mediaThreadStarted;
     volatile ATOMIC_BOOL updatingSampleStreamingSessionList;
     volatile ATOMIC_BOOL recreateSignalingClient;
-    volatile ATOMIC_BOOL videoFrameReceived;
+    volatile ATOMIC_BOOL answerReceived;
     volatile SIZE_T streamingSessionListReadingThreadCount;
     ChannelInfo channelInfo;
     PCHAR pCaCertPath;
@@ -78,9 +78,7 @@ typedef struct {
     RtcOnDataChannel onDataChannel;
 
     MUTEX sampleConfigurationObjLock;
-    MUTEX videoFrameLock;
     CVAR cvar;
-    CVAR signalVideoFrame;
     BOOL trickleIce;
     BOOL useTurn;
     UINT64 customData;
@@ -103,8 +101,8 @@ struct __SampleStreamingSession {
     PRtcRtpTransceiver pAudioRtcRtpTransceiver;
     RtcSessionDescriptionInit answerSessionDescriptionInit;
     PSampleConfiguration pSampleConfiguration;
-    UINT32 audioTimestamp;
-    UINT32 videoTimestamp;
+    UINT64 audioTimestamp;
+    UINT64 videoTimestamp;
     CHAR peerId[MAX_SIGNALING_CLIENT_ID_LEN + 1];
     TID receiveAudioVideoSenderTid;
 

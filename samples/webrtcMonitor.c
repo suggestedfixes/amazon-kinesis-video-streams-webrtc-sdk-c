@@ -1,7 +1,8 @@
 #include "webrtc.h"
 
-#define APP_WEBRTC_CHECK_PERIOD 120
-#define APP_WEBRTC_VIDEO_WAIT_TIMEOUT 40
+#define APP_WEBRTC_CHECK_PERIOD 126
+#define APP_WEBRTC_ANSWER_WAIT_TIMEOUT 42
+#define APP_WEBRTC_VIDEO_WAIT_TIMEOUT 42
 #define APP_RETRY_COUNT 3
 
 extern gSampleConfiguration;
@@ -19,6 +20,7 @@ BOOL checkWebrtcStatus(int argc, char** argv)
     BOOL alive = FALSE;
     int total_sleep = 0;
 
+    srandom(time(NULL));
     genRandomId();
     // do trickle-ice by default
     printf("[KVS Viewer] Using trickleICE by default\n");
@@ -66,8 +68,8 @@ BOOL checkWebrtcStatus(int argc, char** argv)
         printf("[KVS Viewer] createSampleStreamingSession(): operation returned status code: 0x%08x \n", retStatus);
         goto CleanUp;
     }
-
     printf("[KVS Viewer] Creating streaming session...completed\n");
+
     pSampleConfiguration->sampleStreamingSessionList[pSampleConfiguration->streamingSessionCount++] = pSampleStreamingSession;
 
     MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
@@ -97,14 +99,6 @@ BOOL checkWebrtcStatus(int argc, char** argv)
         goto CleanUp;
     }
     printf("[KVS Viewer] Completed setting local description\n");
-
-    retStatus = transceiverOnFrame(pSampleStreamingSession->pVideoRtcRtpTransceiver,
-        (UINT64)pSampleStreamingSession,
-        sampleFrameHandler);
-    if (retStatus != STATUS_SUCCESS) {
-        printf("[KVS Viewer] transceiverOnFrame(): operation returned status code: 0x%08x \n", retStatus);
-        goto CleanUp;
-    }
 
     printf("[KVS Viewer] Generating JSON of session description....");
     retStatus = serializeSessionDescriptionInit(&offerSessionDescriptionInit, NULL, &buffLen);
@@ -136,26 +130,22 @@ BOOL checkWebrtcStatus(int argc, char** argv)
         goto CleanUp;
     }
 
-    while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->videoFrameReceived)) {
-        THREAD_SLEEP(HUNDREDS_OF_NANOS_IN_A_SECOND);
-        total_sleep += 1;
-        if (total_sleep >= APP_WEBRTC_VIDEO_WAIT_TIMEOUT) {
-            break;
+    while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->answerReceived)) {
+        THREAD_SLEEP(7 * HUNDREDS_OF_NANOS_IN_A_SECOND);
+        total_sleep += 7;
+        if (total_sleep >= APP_WEBRTC_ANSWER_WAIT_TIMEOUT) {
+            alive = FALSE;
+            DLOGD("[KVS Viewer] Monitor did not receive an answer in time.\n");
+            goto CleanUp;
         }
     }
 
-    if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->videoFrameReceived)) {
-        DLOGD("Monitor received a video frame in time.\n");
-        retStatus = STATUS_SUCCESS;
+    if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->answerReceived)) {
+        DLOGD("[KVS Viewer] Monitor received an answer in time.\n");
         alive = TRUE;
-    } else {
-        DLOGD("Monitor did not receive a video frame in time.\n");
-        retStatus = STATUS_OPERATION_TIMED_OUT;
-        alive = FALSE;
     }
 
 CleanUp:
-
     if (retStatus != STATUS_SUCCESS) {
         printf("[KVS Viewer] Terminated with status code 0x%08x", retStatus);
     }
@@ -186,7 +176,6 @@ int main(int argc, char** argv)
         printf("Usage: program channel cmd\n");
         return 0;
     }
-    srandom(time(NULL));
     signal(SIGINT, sigintHandler);
     system(argv[2]);
     for (;;) {

@@ -30,7 +30,7 @@ VOID onDataChannelMessage(UINT64 customData, BOOL isBinary, PBYTE pMessage, UINT
 
 VOID onDataChannel(UINT64 customData, PRtcDataChannel pRtcDataChannel)
 {
-    DLOGI("New DataChannel has been opened %s \n", pRtcDataChannel->name);
+    DLOGD("New DataChannel has been opened %s \n", pRtcDataChannel->name);
     dataChannelOnMessage(pRtcDataChannel, customData, onDataChannelMessage);
 }
 
@@ -185,12 +185,12 @@ CleanUp:
 STATUS handleAnswer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSession pSampleStreamingSession,
     PSignalingMessage pSignalingMessage)
 {
-    UNUSED_PARAM(pSampleConfiguration);
     STATUS retStatus = STATUS_SUCCESS;
     RtcSessionDescriptionInit answerSessionDescriptionInit;
 
     MEMSET(&answerSessionDescriptionInit, 0x00, SIZEOF(RtcSessionDescriptionInit));
 
+    ATOMIC_STORE_BOOL(&pSampleConfiguration->answerReceived, TRUE);
     CHK_STATUS(deserializeSessionDescriptionInit(pSignalingMessage->payload, pSignalingMessage->payloadLen, &answerSessionDescriptionInit));
     CHK_STATUS(setRemoteDescription(pSampleStreamingSession->pPeerConnection, &answerSessionDescriptionInit));
 
@@ -231,7 +231,7 @@ STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSe
 
     CHK_STATUS(respondWithAnswer(pSampleStreamingSession));
 
-    if (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->mediaThreadStarted)) {
+    if (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->mediaThreadStarted) || !IS_VALID_TID_VALUE(pSampleConfiguration->videoSenderTid)) {
         ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, TRUE);
         if (pSampleConfiguration->videoSource != NULL) {
             THREAD_CREATE(&pSampleConfiguration->videoSenderTid, pSampleConfiguration->videoSource,
@@ -410,10 +410,6 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
         NULL,
         &pSampleStreamingSession->pVideoRtcRtpTransceiver));
 
-    CHK_STATUS(transceiverOnBandwidthEstimation(pSampleStreamingSession->pVideoRtcRtpTransceiver,
-        (UINT64)pSampleStreamingSession,
-        sampleBandwidthEstimationHandler));
-
     // Add a SendRecv Transceiver of type video
     audioTrack.kind = MEDIA_STREAM_TRACK_KIND_AUDIO;
     audioTrack.codec = RTC_CODEC_OPUS;
@@ -423,10 +419,6 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
         &audioTrack,
         NULL,
         &pSampleStreamingSession->pAudioRtcRtpTransceiver));
-
-    CHK_STATUS(transceiverOnBandwidthEstimation(pSampleStreamingSession->pAudioRtcRtpTransceiver,
-        (UINT64)pSampleStreamingSession,
-        sampleBandwidthEstimationHandler));
 
 CleanUp:
 
@@ -492,8 +484,6 @@ VOID sampleFrameHandler(UINT64 customData, PFrame pFrame)
 {
     PSampleStreamingSession pSampleStreamingSession = (PSampleStreamingSession)customData;
     DLOGV("Frame received. TrackId: %" PRIu64 ", Size: %u, Flags %u", pFrame->trackId, pFrame->size, pFrame->flags);
-    ATOMIC_STORE_BOOL(&pSampleStreamingSession->pSampleConfiguration->videoFrameReceived, TRUE);
-    CVAR_BROADCAST(pSampleStreamingSession->pSampleConfiguration->signalVideoFrame);
 }
 
 VOID sampleBandwidthEstimationHandler(UINT64 customData, DOUBLE maxiumBitrate)
@@ -605,9 +595,7 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
     pSampleConfiguration->videoSenderTid = INVALID_TID_VALUE;
     pSampleConfiguration->signalingClientHandle = INVALID_SIGNALING_CLIENT_HANDLE_VALUE;
     pSampleConfiguration->sampleConfigurationObjLock = MUTEX_CREATE(TRUE);
-    pSampleConfiguration->videoFrameLock = MUTEX_CREATE(TRUE);
     pSampleConfiguration->cvar = CVAR_CREATE();
-    pSampleConfiguration->signalVideoFrame = CVAR_CREATE();
     pSampleConfiguration->trickleIce = trickleIce;
     pSampleConfiguration->useTurn = useTurn;
 
@@ -730,6 +718,7 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
                 pSampleConfiguration->sampleStreamingSessionList[i] = pSampleConfiguration->sampleStreamingSessionList[pSampleConfiguration->streamingSessionCount];
                 CHK_STATUS(freeSampleStreamingSession(&pSampleStreamingSession));
                 ATOMIC_STORE_BOOL(&pSampleConfiguration->updatingSampleStreamingSessionList, FALSE);
+                genCerts(pSampleConfiguration);
             }
         }
 
@@ -747,6 +736,14 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
             CHK_STATUS(signalingClientGetCurrentState(pSampleConfiguration->signalingClientHandle, &signalingClientState));
             if (signalingClientState == SIGNALING_CLIENT_STATE_READY) {
                 UNUSED_PARAM(signalingClientConnectSync(pSampleConfiguration->signalingClientHandle));
+            }
+        }
+
+        if (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->mediaThreadStarted) || !IS_VALID_TID_VALUE(pSampleConfiguration->videoSenderTid)) {
+            ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, TRUE);
+            if (pSampleConfiguration->videoSource != NULL) {
+                THREAD_CREATE(&pSampleConfiguration->videoSenderTid, pSampleConfiguration->videoSource,
+                    (PVOID)pSampleConfiguration);
             }
         }
     }
