@@ -1,9 +1,9 @@
 #include "webrtc.h"
 
-#define APP_WEBRTC_CHECK_PERIOD 126
-#define APP_WEBRTC_ANSWER_WAIT_TIMEOUT 42
-#define APP_WEBRTC_VIDEO_WAIT_TIMEOUT 42
-#define APP_RETRY_COUNT 3
+#define APP_WEBRTC_CHECK_PERIOD 293
+#define APP_WEBRTC_ANSWER_WAIT_TIMEOUT 59
+#define APP_WEBRTC_VIDEO_WAIT_TIMEOUT 59
+#define APP_RETRY_COUNT 5
 
 extern gSampleConfiguration;
 
@@ -131,8 +131,8 @@ BOOL checkWebrtcStatus(int argc, char** argv)
     }
 
     while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->answerReceived)) {
-        THREAD_SLEEP(7 * HUNDREDS_OF_NANOS_IN_A_SECOND);
-        total_sleep += 7;
+        THREAD_SLEEP(5 * HUNDREDS_OF_NANOS_IN_A_SECOND);
+        total_sleep += 5;
         if (total_sleep >= APP_WEBRTC_ANSWER_WAIT_TIMEOUT) {
             alive = FALSE;
             DLOGD("[KVS Viewer] Monitor did not receive an answer in time.\n");

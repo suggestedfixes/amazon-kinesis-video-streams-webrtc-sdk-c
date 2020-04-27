@@ -516,37 +516,37 @@ extern "C" {
 /**
  * Default signaling creation timeout
  */
-#define SIGNALING_CREATE_TIMEOUT                                                    (10 * HUNDREDS_OF_NANOS_IN_A_SECOND)
+#define SIGNALING_CREATE_TIMEOUT                                                    (30 * HUNDREDS_OF_NANOS_IN_A_SECOND)
 
 /**
  * Default connect sync API timeout
  */
-#define SIGNALING_CONNECT_STATE_TIMEOUT                                             (15 * HUNDREDS_OF_NANOS_IN_A_SECOND)
+#define SIGNALING_CONNECT_STATE_TIMEOUT                                             (30 * HUNDREDS_OF_NANOS_IN_A_SECOND)
 
 /**
  * Default signaling connection establishment timeout
  */
-#define SIGNALING_CONNECT_TIMEOUT                                                   (5 * HUNDREDS_OF_NANOS_IN_A_SECOND)
+#define SIGNALING_CONNECT_TIMEOUT                                                   (30 * HUNDREDS_OF_NANOS_IN_A_SECOND)
 
 /**
  * Default timeout for sending data
  */
-#define SIGNALING_SEND_TIMEOUT                                                      (5 * HUNDREDS_OF_NANOS_IN_A_SECOND)
+#define SIGNALING_SEND_TIMEOUT                                                      (30 * HUNDREDS_OF_NANOS_IN_A_SECOND)
 
 /**
  * Default timeout for deleting a channel
  */
-#define SIGNALING_DELETE_TIMEOUT                                                    (5 * HUNDREDS_OF_NANOS_IN_A_SECOND)
+#define SIGNALING_DELETE_TIMEOUT                                                    (30 * HUNDREDS_OF_NANOS_IN_A_SECOND)
 
 /**
  * Default signaling message alive time
  */
-#define SIGNALING_DEFAULT_MESSAGE_TTL_VALUE                                         (60 * HUNDREDS_OF_NANOS_IN_A_SECOND)
+#define SIGNALING_DEFAULT_MESSAGE_TTL_VALUE                                         (120 * HUNDREDS_OF_NANOS_IN_A_SECOND)
 
 /**
  * Default jitter buffer tolerated latency, frame will be dropped if it is out of window
  */
-#define DEFAULT_JITTER_BUFFER_MAX_LATENCY                                           (2000L * HUNDREDS_OF_NANOS_IN_A_MILLISECOND)
+#define DEFAULT_JITTER_BUFFER_MAX_LATENCY                                           (10000L * HUNDREDS_OF_NANOS_IN_A_MILLISECOND)
 /*!@} */
 
 /**
