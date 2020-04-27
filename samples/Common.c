@@ -122,7 +122,7 @@ STATUS masterMessageReceived(UINT64 customData, PReceivedSignalingMessage pRecei
     PSampleConfiguration pSampleConfiguration = (PSampleConfiguration) customData;
     PSampleStreamingSession pSampleStreamingSession = NULL;
     UINT32 i;
-    BOOL locked = FALSE;
+    BOOL locked = FALSE, sessionExisted = FALSE;
 
     CHK(pSampleConfiguration != NULL, STATUS_NULL_ARG);
 
@@ -134,6 +134,7 @@ STATUS masterMessageReceived(UINT64 customData, PReceivedSignalingMessage pRecei
     for (i = 0; i < pSampleConfiguration->streamingSessionCount && pSampleStreamingSession == NULL; ++i) {
         if (0 == STRCMP(pReceivedSignalingMessage->signalingMessage.peerClientId, pSampleConfiguration->sampleStreamingSessionList[i]->peerId)) {
             pSampleStreamingSession = pSampleConfiguration->sampleStreamingSessionList[i];
+            sessionExisted = TRUE;
         }
     }
 
@@ -155,9 +156,13 @@ STATUS masterMessageReceived(UINT64 customData, PReceivedSignalingMessage pRecei
 
     switch (pReceivedSignalingMessage->signalingMessage.messageType) {
         case SIGNALING_MESSAGE_TYPE_OFFER:
-            CHK_STATUS(handleOffer(pSampleConfiguration,
-                                   pSampleStreamingSession,
-                                   &pReceivedSignalingMessage->signalingMessage));
+            if (!sessionExisted) {
+                CHK_STATUS(handleOffer(pSampleConfiguration,
+                                       pSampleStreamingSession,
+                                       &pReceivedSignalingMessage->signalingMessage));
+            } else {
+                DLOGD("session still active, ignore new offer that has the same client id");
+            }
             break;
         case SIGNALING_MESSAGE_TYPE_ICE_CANDIDATE:
             CHK_STATUS(handleRemoteCandidate(pSampleStreamingSession, &pReceivedSignalingMessage->signalingMessage));
@@ -203,6 +208,7 @@ STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSe
 {
     STATUS retStatus = STATUS_SUCCESS;
     RtcSessionDescriptionInit offerSessionDescriptionInit;
+    BOOL locked = FALSE;
 
     CHK(pSampleConfiguration != NULL && pSignalingMessage != NULL, STATUS_NULL_ARG);
 
@@ -215,10 +221,16 @@ STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSe
     CHK_STATUS(setLocalDescription(pSampleStreamingSession->pPeerConnection, &pSampleStreamingSession->answerSessionDescriptionInit));
 
     if (!pSampleConfiguration->trickleIce) {
+        MUTEX_LOCK(pSampleConfiguration->sampleConfigurationObjLock);
+        locked = TRUE;
+
         while (!ATOMIC_LOAD_BOOL(&pSampleStreamingSession->candidateGatheringDone)) {
             CHK_WARN(!ATOMIC_LOAD_BOOL(&pSampleStreamingSession->terminateFlag), STATUS_INTERNAL_ERROR, "application terminated and candidate gathering still not done");
-            CVAR_WAIT(pSampleConfiguration->cvar, pSampleConfiguration->sampleConfigurationObjLock, INFINITE_TIME_VALUE);
+            CVAR_WAIT(pSampleConfiguration->cvar, pSampleConfiguration->sampleConfigurationObjLock, 5 * HUNDREDS_OF_NANOS_IN_A_SECOND);
         }
+
+        MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
+        locked = FALSE;
 
         DLOGD("Candidate collection done for non trickle ice");
         // get the latest local description once candidate gathering is done
@@ -250,6 +262,10 @@ STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSe
 CleanUp:
 
     CHK_LOG_ERR(retStatus);
+
+    if (locked) {
+        MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
+    }
 
     return retStatus;
 }
@@ -312,6 +328,7 @@ STATUS initializePeerConnection(PSampleConfiguration pSampleConfiguration, PRtcP
     RtcConfiguration configuration;
     UINT32 i, j, iceConfigCount, uriCount;
     PIceConfigInfo pIceConfigInfo;
+    const UINT32 maxTurnServer = 1;
 
     CHK(pSampleConfiguration != NULL && ppRtcPeerConnection != NULL, STATUS_NULL_ARG);
 
@@ -328,7 +345,9 @@ STATUS initializePeerConnection(PSampleConfiguration pSampleConfiguration, PRtcP
         // Set the URIs from the configuration
         CHK_STATUS(signalingClientGetIceConfigInfoCount(pSampleConfiguration->signalingClientHandle, &iceConfigCount));
 
-        for (uriCount = 0, i = 0; i < iceConfigCount; i++) {
+        /* signalingClientGetIceConfigInfoCount can return more than one turn server. Use only one to optimize
+         * candidate gathering latency. But user can also choose to use more than 1 turn server. */
+        for (uriCount = 0, i = 0; i < maxTurnServer; i++) {
             CHK_STATUS(signalingClientGetIceConfigInfo(pSampleConfiguration->signalingClientHandle, i, &pIceConfigInfo));
             for (j = 0; j < pIceConfigInfo->uriCount; j++) {
                 CHECK(uriCount < MAX_ICE_SERVERS_COUNT);
@@ -756,6 +775,8 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
     }
 
 CleanUp:
+
+    CHK_LOG_ERR(retStatus);
 
     if (locked) {
         MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
