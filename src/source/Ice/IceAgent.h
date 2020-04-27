@@ -27,8 +27,8 @@ extern "C" {
 
 // Disconnection timeout should be as long as KVS_ICE_SEND_KEEP_ALIVE_INTERVAL because peer can just be receiving
 // media and not sending anything back except keep alives
-#define KVS_ICE_ENTER_STATE_DISCONNECTION_GRACE_PERIOD                  15 * HUNDREDS_OF_NANOS_IN_A_SECOND
-#define KVS_ICE_ENTER_STATE_FAILED_GRACE_PERIOD                         30 * HUNDREDS_OF_NANOS_IN_A_SECOND
+#define KVS_ICE_ENTER_STATE_DISCONNECTION_GRACE_PERIOD                  30 * HUNDREDS_OF_NANOS_IN_A_SECOND
+#define KVS_ICE_ENTER_STATE_FAILED_GRACE_PERIOD                         60 * HUNDREDS_OF_NANOS_IN_A_SECOND
 
 #define STUN_HEADER_MAGIC_BYTE_OFFSET                                   4
 
