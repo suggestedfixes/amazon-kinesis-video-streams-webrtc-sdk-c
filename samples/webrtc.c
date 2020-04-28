@@ -81,9 +81,6 @@ VOID cleanGst(GMainLoop* loop, GstElement* pipeline, GstBus* bus,
             gst_message_unref(msg);
         }
     }
-    if (gst_is_initialized()) {
-        gst_deinit();
-    }
 }
 
 GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
@@ -101,6 +98,7 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
     PSampleStreamingSession pSampleStreamingSession = NULL;
     PRtcRtpTransceiver pRtcRtpTransceiver = NULL;
     UINT32 i;
+    UINT64 time = GETTIME();
 
     CHK(pSampleConfiguration != NULL, STATUS_NULL_ARG);
 
@@ -145,15 +143,12 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
                     pRtcRtpTransceiver = pSampleStreamingSession->pAudioRtcRtpTransceiver;
                     frame.presentationTs = pSampleStreamingSession->audioTimestamp;
                     frame.decodingTs = frame.presentationTs;
-                    pSampleStreamingSession->audioTimestamp += SAMPLE_AUDIO_FRAME_DURATION; // assume audio frame size
-                    // is 20ms, which is
-                    // default in opusenc
-
+                    pSampleStreamingSession->audioTimestamp = time;
                 } else {
                     pRtcRtpTransceiver = pSampleStreamingSession->pVideoRtcRtpTransceiver;
                     frame.presentationTs = pSampleStreamingSession->videoTimestamp;
                     frame.decodingTs = frame.presentationTs;
-                    pSampleStreamingSession->videoTimestamp += SAMPLE_VIDEO_FRAME_DURATION; // assume video fps is 30
+                    pSampleStreamingSession->videoTimestamp = time;
                 }
 
                 status = writeFrame(pRtcRtpTransceiver, &frame);
@@ -261,9 +256,6 @@ PVOID sendGstreamerAudioVideo(PVOID args)
     // recreate gstreamer pipeline on error or eof if enabled
     // blocks on g_main_loop_run
     do {
-        if (!gst_is_initialized()) {
-            gst_init(NULL, NULL);
-        }
         gstCleaned = FALSE;
         pipeline = gst_parse_launch(appGstStr, &error);
 
@@ -317,8 +309,9 @@ CleanUp:
         g_clear_error(&error);
     }
     cleanGst(main_loop, pipeline, bus, msg, gstCleaned);
-    CHK_LOG_ERR_NV(retStatus);
+    CHK_LOG_ERR(retStatus);
     ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, FALSE);
+    pSampleConfiguration->videoSenderTid = INVALID_TID_VALUE;
     return (PVOID)(ULONG_PTR)retStatus;
 }
 
@@ -435,7 +428,7 @@ CleanUp:
     }
 
     cleanGst(NULL, pipeline, bus, msg, gstCleaned);
-    CHK_LOG_ERR_NV(retStatus);
+    CHK_LOG_ERR(retStatus);
     return (PVOID)(ULONG_PTR)retStatus;
 }
 
@@ -516,7 +509,7 @@ void trampoline(CHAR* argv[])
 CleanUp:
 
     printf("[KVS GStreamer Master] Cleaning up....\n");
-    CHK_LOG_ERR_NV(retStatus);
+    CHK_LOG_ERR(retStatus);
 
     if (pSampleConfiguration != NULL) {
         // Kick of the termination sequence
@@ -527,9 +520,9 @@ CleanUp:
             THREAD_JOIN(pSampleConfiguration->videoSenderTid, NULL);
         }
 
-        CHK_LOG_ERR_NV(
+        CHK_LOG_ERR(
             freeSignalingClient(&pSampleConfiguration->signalingClientHandle));
-        CHK_LOG_ERR_NV(freeSampleConfiguration(&pSampleConfiguration));
+        CHK_LOG_ERR(freeSampleConfiguration(&pSampleConfiguration));
     }
     printf("[KVS Gstreamer Master] Cleanup done\n");
 }
@@ -540,9 +533,11 @@ void logger()
     // 5000 lines is about 5MB
     int LINE_COUNT_LIMIT = 5000;
     freopen(APP_LOG_PATH, "a+", stdout);
+    freopen(APP_LOG_PATH, "a+", stderr);
     for (;;) {
         THREAD_SLEEP(10 * HUNDREDS_OF_NANOS_IN_A_SECOND);
         fflush(stdout);
+        fflush(stderr);
         SPRINTF(CMD_BUFFER, "cat %s | tail -n%d > %s.bak\0", APP_LOG_PATH, LINE_COUNT_LIMIT, APP_LOG_PATH);
         system(CMD_BUFFER);
         SPRINTF(CMD_BUFFER, "cat %s.bak > %s\0", APP_LOG_PATH, APP_LOG_PATH);
@@ -551,11 +546,11 @@ void logger()
         system(CMD_BUFFER);
     }
     fclose(stdout);
+    fclose(stderr);
 }
 
 int main(int argc, char** argv)
 {
-
     if (argc < 2) {
         printf("Usage: program channel\n");
         return 0;
@@ -566,7 +561,13 @@ int main(int argc, char** argv)
 
     signal(SIGINT, sigintHandler);
 
-    THREAD_CREATE(&logId, logger, NULL);
+    if (argc >= 3) {
+        if (strcmp(argv[2], "nolog") != 0) {
+            THREAD_CREATE(&logId, logger, NULL);
+        }
+    } else {
+        THREAD_CREATE(&logId, logger, NULL);
+    }
     for (;;) {
         THREAD_CREATE(&trampolineId, trampoline, (PVOID)argv);
         THREAD_JOIN(trampolineId, NULL);

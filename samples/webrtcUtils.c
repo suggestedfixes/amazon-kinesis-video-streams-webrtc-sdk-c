@@ -1,6 +1,7 @@
-
+#define LOG_CLASS "WebRTC"
 #include "webrtc.h"
 
+char app_peer_id_charset[30] = "abcdefghijklmnopqrstuvwxyz012\0";
 PSampleConfiguration gSampleConfiguration = NULL;
 
 VOID sigintHandler(INT32 sigNum)
@@ -11,7 +12,9 @@ VOID sigintHandler(INT32 sigNum)
         CVAR_BROADCAST(gSampleConfiguration->cvar);
     }
     fflush(stdout);
+    fflush(stderr);
     fclose(stdout);
+    fclose(stderr);
     exit(0);
 }
 
@@ -27,7 +30,7 @@ VOID onDataChannelMessage(UINT64 customData, BOOL isBinary, PBYTE pMessage, UINT
 
 VOID onDataChannel(UINT64 customData, PRtcDataChannel pRtcDataChannel)
 {
-    DLOGI("New DataChannel has been opened %s \n", pRtcDataChannel->name);
+    DLOGD("New DataChannel has been opened %s \n", pRtcDataChannel->name);
     dataChannelOnMessage(pRtcDataChannel, customData, onDataChannelMessage);
 }
 
@@ -110,7 +113,7 @@ STATUS signalingClientError(UINT64 customData, STATUS status, PCHAR msg, UINT32 
     // We will force re-create the signaling client on the following errors
     if (status == STATUS_SIGNALING_ICE_CONFIG_REFRESH_FAILED || status == STATUS_SIGNALING_RECONNECT_FAILED) {
         ATOMIC_STORE_BOOL(&pSampleConfiguration->recreateSignalingClient, TRUE);
-        CVAR_BROADCAST(gSampleConfiguration->cvar);
+        CVAR_BROADCAST(pSampleConfiguration->cvar);
     }
 
     return STATUS_SUCCESS;
@@ -182,23 +185,18 @@ CleanUp:
 STATUS handleAnswer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSession pSampleStreamingSession,
     PSignalingMessage pSignalingMessage)
 {
-    UNUSED_PARAM(pSampleConfiguration);
     STATUS retStatus = STATUS_SUCCESS;
     RtcSessionDescriptionInit answerSessionDescriptionInit;
 
     MEMSET(&answerSessionDescriptionInit, 0x00, SIZEOF(RtcSessionDescriptionInit));
 
+    ATOMIC_STORE_BOOL(&pSampleConfiguration->answerReceived, TRUE);
     CHK_STATUS(deserializeSessionDescriptionInit(pSignalingMessage->payload, pSignalingMessage->payloadLen, &answerSessionDescriptionInit));
     CHK_STATUS(setRemoteDescription(pSampleStreamingSession->pPeerConnection, &answerSessionDescriptionInit));
 
 CleanUp:
 
-    CHK_LOG_ERR_NV(retStatus);
-
-    if (retStatus == STATUS_SUCCESS) {
-        ATOMIC_STORE_BOOL(&pSampleConfiguration->answerReceived, TRUE);
-        CVAR_BROADCAST(pSampleConfiguration->signalAnswer);
-    }
+    CHK_LOG_ERR(retStatus);
 
     return retStatus;
 }
@@ -233,7 +231,7 @@ STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSe
 
     CHK_STATUS(respondWithAnswer(pSampleStreamingSession));
 
-    if (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->mediaThreadStarted)) {
+    if (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->mediaThreadStarted) || !IS_VALID_TID_VALUE(pSampleConfiguration->videoSenderTid)) {
         ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, TRUE);
         if (pSampleConfiguration->videoSource != NULL) {
             THREAD_CREATE(&pSampleConfiguration->videoSenderTid, pSampleConfiguration->videoSource,
@@ -254,7 +252,7 @@ STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSe
 
 CleanUp:
 
-    CHK_LOG_ERR_NV(retStatus);
+    CHK_LOG_ERR(retStatus);
 
     return retStatus;
 }
@@ -278,7 +276,7 @@ STATUS respondWithAnswer(PSampleStreamingSession pSampleStreamingSession)
 
 CleanUp:
 
-    CHK_LOG_ERR_NV(retStatus);
+    CHK_LOG_ERR(retStatus);
     return retStatus;
 }
 
@@ -307,7 +305,7 @@ VOID onIceCandidateHandler(UINT64 customData, PCHAR candidateJson)
 
 CleanUp:
 
-    CHK_LOG_ERR_NV(retStatus);
+    CHK_LOG_ERR(retStatus);
 }
 
 STATUS initializePeerConnection(PSampleConfiguration pSampleConfiguration, PRtcPeerConnection* ppRtcPeerConnection)
@@ -376,7 +374,7 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
     if (isMaster) {
         STRCPY(pSampleStreamingSession->peerId, peerId);
     } else {
-        STRCPY(pSampleStreamingSession->peerId, SAMPLE_VIEWER_CLIENT_ID);
+        STRCPY(pSampleStreamingSession->peerId, name_buffer);
     }
     ATOMIC_STORE_BOOL(&pSampleStreamingSession->peerIdReceived, TRUE);
 
@@ -412,10 +410,6 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
         NULL,
         &pSampleStreamingSession->pVideoRtcRtpTransceiver));
 
-    CHK_STATUS(transceiverOnBandwidthEstimation(pSampleStreamingSession->pVideoRtcRtpTransceiver,
-        (UINT64)pSampleStreamingSession,
-        sampleBandwidthEstimationHandler));
-
     // Add a SendRecv Transceiver of type video
     audioTrack.kind = MEDIA_STREAM_TRACK_KIND_AUDIO;
     audioTrack.codec = RTC_CODEC_OPUS;
@@ -425,10 +419,6 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
         &audioTrack,
         NULL,
         &pSampleStreamingSession->pAudioRtcRtpTransceiver));
-
-    CHK_STATUS(transceiverOnBandwidthEstimation(pSampleStreamingSession->pAudioRtcRtpTransceiver,
-        (UINT64)pSampleStreamingSession,
-        sampleBandwidthEstimationHandler));
 
 CleanUp:
 
@@ -470,7 +460,7 @@ STATUS freeSampleStreamingSession(PSampleStreamingSession* ppSampleStreamingSess
 
 CleanUp:
 
-    CHK_LOG_ERR_NV(retStatus);
+    CHK_LOG_ERR(retStatus);
 
     return retStatus;
 }
@@ -492,7 +482,7 @@ CleanUp:
 
 VOID sampleFrameHandler(UINT64 customData, PFrame pFrame)
 {
-    UNUSED_PARAM(customData);
+    PSampleStreamingSession pSampleStreamingSession = (PSampleStreamingSession)customData;
     DLOGV("Frame received. TrackId: %" PRIu64 ", Size: %u, Flags %u", pFrame->trackId, pFrame->size, pFrame->flags);
 }
 
@@ -512,7 +502,7 @@ STATUS handleRemoteCandidate(PSampleStreamingSession pSampleStreamingSession, PS
 
 CleanUp:
 
-    CHK_LOG_ERR_NV(retStatus);
+    CHK_LOG_ERR(retStatus);
     return retStatus;
 }
 
@@ -571,7 +561,7 @@ STATUS lookForSslCert(PSampleConfiguration* ppSampleConfiguration)
 
 CleanUp:
 
-    CHK_LOG_ERR_NV(retStatus);
+    CHK_LOG_ERR(retStatus);
     return retStatus;
 }
 
@@ -605,9 +595,7 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
     pSampleConfiguration->videoSenderTid = INVALID_TID_VALUE;
     pSampleConfiguration->signalingClientHandle = INVALID_SIGNALING_CLIENT_HANDLE_VALUE;
     pSampleConfiguration->sampleConfigurationObjLock = MUTEX_CREATE(TRUE);
-    pSampleConfiguration->answerLock = MUTEX_CREATE(TRUE);
     pSampleConfiguration->cvar = CVAR_CREATE();
-    pSampleConfiguration->signalAnswer = CVAR_CREATE();
     pSampleConfiguration->trickleIce = trickleIce;
     pSampleConfiguration->useTurn = useTurn;
 
@@ -730,6 +718,7 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
                 pSampleConfiguration->sampleStreamingSessionList[i] = pSampleConfiguration->sampleStreamingSessionList[pSampleConfiguration->streamingSessionCount];
                 CHK_STATUS(freeSampleStreamingSession(&pSampleStreamingSession));
                 ATOMIC_STORE_BOOL(&pSampleConfiguration->updatingSampleStreamingSessionList, FALSE);
+                genCerts(pSampleConfiguration);
             }
         }
 
@@ -737,11 +726,7 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
         CVAR_WAIT(pSampleConfiguration->cvar, pSampleConfiguration->sampleConfigurationObjLock, 5 * HUNDREDS_OF_NANOS_IN_A_SECOND);
 
         // Check if we need to re-create the signaling client on-the-fly
-        if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->recreateSignalingClient) && STATUS_SUCCEEDED(freeSignalingClient(&pSampleConfiguration->signalingClientHandle)) && STATUS_SUCCEEDED(createSignalingClientSync(&pSampleConfiguration->clientInfo,
-                                                                                                                                                                           &pSampleConfiguration->channelInfo,
-                                                                                                                                                                           &pSampleConfiguration->signalingClientCallbacks,
-                                                                                                                                                                           pSampleConfiguration->pCredentialProvider,
-                                                                                                                                                                           &pSampleConfiguration->signalingClientHandle))) {
+        if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->recreateSignalingClient) && STATUS_SUCCEEDED(freeSignalingClient(&pSampleConfiguration->signalingClientHandle)) && STATUS_SUCCEEDED(createSignalingClientSync(&pSampleConfiguration->clientInfo, &pSampleConfiguration->channelInfo, &pSampleConfiguration->signalingClientCallbacks, pSampleConfiguration->pCredentialProvider, &pSampleConfiguration->signalingClientHandle))) {
             // Re-set the variable again
             ATOMIC_STORE_BOOL(&pSampleConfiguration->recreateSignalingClient, FALSE);
         }
@@ -751,6 +736,14 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
             CHK_STATUS(signalingClientGetCurrentState(pSampleConfiguration->signalingClientHandle, &signalingClientState));
             if (signalingClientState == SIGNALING_CLIENT_STATE_READY) {
                 UNUSED_PARAM(signalingClientConnectSync(pSampleConfiguration->signalingClientHandle));
+            }
+        }
+
+        if (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->mediaThreadStarted) || !IS_VALID_TID_VALUE(pSampleConfiguration->videoSenderTid)) {
+            ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, TRUE);
+            if (pSampleConfiguration->videoSource != NULL) {
+                THREAD_CREATE(&pSampleConfiguration->videoSenderTid, pSampleConfiguration->videoSource,
+                    (PVOID)pSampleConfiguration);
             }
         }
     }
@@ -778,6 +771,14 @@ STATUS genCerts(PSampleConfiguration pConfig)
     pConfig->rtcConfig.certificates[0].pPrivateKey = (PBYTE)pKey;
 
 CleanUp:
-    CHK_LOG_ERR_NV(retStatus);
+    CHK_LOG_ERR(retStatus);
     return retStatus;
+}
+
+VOID genRandomId()
+{
+    for (int i = 0; i < APP_PEER_ID_LENGTH; i++) {
+        name_buffer[i] = app_peer_id_charset[(random() % 29) & 0x1f];
+    }
+    name_buffer[APP_PEER_ID_LENGTH] = 0;
 }

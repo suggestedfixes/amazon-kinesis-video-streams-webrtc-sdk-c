@@ -29,7 +29,7 @@ extern "C" {
 #define APP_TRICKLE_ICE TRUE
 #define APP_TURN TRUE
 
-#define APP_GST_ERR_RECOVERY TRUE
+#define APP_GST_ERR_RECOVERY FALSE
 #define APP_GST_EOS_EXIT FALSE
 #define APP_GST_RTSPSRC_EXT FALSE
 #define APP_GST_ENFORCE_TCP FALSE
@@ -39,6 +39,11 @@ extern "C" {
 #define APP_PREGEN_CERTS TRUE
 #define APP_GENCERTBITS_OVERRIDE 1024
 #define APP_LOG_PATH "/tmp/webrtc.log"
+
+#define APP_PEER_ID_LENGTH 10
+
+char app_peer_id_charset[30];
+char name_buffer[32];
 
 typedef enum {
     SAMPLE_STREAMING_VIDEO_ONLY,
@@ -73,9 +78,7 @@ typedef struct {
     RtcOnDataChannel onDataChannel;
 
     MUTEX sampleConfigurationObjLock;
-    MUTEX answerLock;
     CVAR cvar;
-    CVAR signalAnswer;
     BOOL trickleIce;
     BOOL useTurn;
     UINT64 customData;
@@ -98,8 +101,8 @@ struct __SampleStreamingSession {
     PRtcRtpTransceiver pAudioRtcRtpTransceiver;
     RtcSessionDescriptionInit answerSessionDescriptionInit;
     PSampleConfiguration pSampleConfiguration;
-    UINT32 audioTimestamp;
-    UINT32 videoTimestamp;
+    UINT64 audioTimestamp;
+    UINT64 videoTimestamp;
     CHAR peerId[MAX_SIGNALING_CLIENT_ID_LEN + 1];
     TID receiveAudioVideoSenderTid;
 
@@ -135,6 +138,7 @@ VOID onDataChannel(UINT64, PRtcDataChannel);
 VOID onConnectionStateChange(UINT64, RTC_PEER_CONNECTION_STATE);
 STATUS sessionCleanupWait(PSampleConfiguration);
 STATUS genCerts(PSampleConfiguration pConfig);
+VOID genRandomId();
 
 #ifdef __cplusplus
 }
