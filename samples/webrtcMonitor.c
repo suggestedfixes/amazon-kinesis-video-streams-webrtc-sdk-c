@@ -1,5 +1,12 @@
 #include "webrtc.h"
 
+#define APP_WEBRTC_CHECK_PERIOD 126
+#define APP_WEBRTC_ANSWER_WAIT_TIMEOUT 42
+#define APP_WEBRTC_VIDEO_WAIT_TIMEOUT 42
+#define APP_RETRY_COUNT 3
+
+extern gSampleConfiguration;
+
 BOOL checkWebrtcStatus(int argc, char** argv)
 {
     STATUS retStatus = STATUS_SUCCESS;
@@ -7,30 +14,33 @@ BOOL checkWebrtcStatus(int argc, char** argv)
     UINT32 buffLen = 0;
     SignalingMessage message;
     PSampleConfiguration pSampleConfiguration = NULL;
+    gSampleConfiguration = pSampleConfiguration;
     PSampleStreamingSession pSampleStreamingSession = NULL;
     BOOL locked = FALSE;
     BOOL alive = FALSE;
+    int total_sleep = 0;
 
-    signal(SIGINT, sigintHandler);
-
+    srandom(time(NULL));
+    genRandomId();
     // do trickle-ice by default
-    printf("[KVS Master] Using trickleICE by default\n");
+    printf("[KVS Viewer] Using trickleICE by default\n");
 
     retStatus = createSampleConfiguration(argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME,
         SIGNALING_CHANNEL_ROLE_TYPE_VIEWER,
-        TRUE,
+        APP_TRICKLE_ICE,
         TRUE,
         &pSampleConfiguration);
     if (retStatus != STATUS_SUCCESS) {
         printf("[KVS Viewer] createSampleConfiguration(): operation returned status code: 0x%08x \n", retStatus);
         goto CleanUp;
     }
+
     printf("[KVS Viewer] Created signaling channel %s\n", (argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME));
 
     // Initialize KVS WebRTC. This must be done before anything else, and must only be done once.
     retStatus = initKvsWebRtc();
     if (retStatus != STATUS_SUCCESS) {
-        printf("[KVS Master] initKvsWebRtc(): operation returned status code: 0x%08x \n", retStatus);
+        printf("[KVS Viewer] initKvsWebRtc(): operation returned status code: 0x%08x \n", retStatus);
         goto CleanUp;
     }
 
@@ -38,8 +48,7 @@ BOOL checkWebrtcStatus(int argc, char** argv)
 
     pSampleConfiguration->signalingClientCallbacks.messageReceivedFn = viewerMessageReceived;
 
-    strcpy(pSampleConfiguration->clientInfo.clientId, SAMPLE_VIEWER_CLIENT_ID);
-
+    strcpy(pSampleConfiguration->clientInfo.clientId, name_buffer);
     retStatus = createSignalingClientSync(&pSampleConfiguration->clientInfo, &pSampleConfiguration->channelInfo,
         &pSampleConfiguration->signalingClientCallbacks, pSampleConfiguration->pCredentialProvider,
         &pSampleConfiguration->signalingClientHandle);
@@ -59,8 +68,8 @@ BOOL checkWebrtcStatus(int argc, char** argv)
         printf("[KVS Viewer] createSampleStreamingSession(): operation returned status code: 0x%08x \n", retStatus);
         goto CleanUp;
     }
-
     printf("[KVS Viewer] Creating streaming session...completed\n");
+
     pSampleConfiguration->sampleStreamingSessionList[pSampleConfiguration->streamingSessionCount++] = pSampleStreamingSession;
 
     MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
@@ -109,8 +118,6 @@ BOOL checkWebrtcStatus(int argc, char** argv)
         goto CleanUp;
     }
 
-    printf("Completed\n");
-
     message.version = SIGNALING_MESSAGE_CURRENT_VERSION;
     message.messageType = SIGNALING_MESSAGE_TYPE_OFFER;
     STRCPY(message.peerClientId, SAMPLE_MASTER_CLIENT_ID);
@@ -123,22 +130,22 @@ BOOL checkWebrtcStatus(int argc, char** argv)
         goto CleanUp;
     }
 
-    MUTEX_LOCK(pSampleConfiguration->answerLock);
-    CVAR_WAIT(pSampleConfiguration->signalAnswer, pSampleConfiguration->answerLock, 15 * HUNDREDS_OF_NANOS_IN_A_SECOND);
+    while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->answerReceived)) {
+        THREAD_SLEEP(7 * HUNDREDS_OF_NANOS_IN_A_SECOND);
+        total_sleep += 7;
+        if (total_sleep >= APP_WEBRTC_ANSWER_WAIT_TIMEOUT) {
+            alive = FALSE;
+            DLOGD("[KVS Viewer] Monitor did not receive an answer in time.\n");
+            goto CleanUp;
+        }
+    }
 
     if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->answerReceived)) {
-        printf("<success>\n");
-        retStatus = STATUS_SUCCESS;
+        DLOGD("[KVS Viewer] Monitor received an answer in time.\n");
         alive = TRUE;
-    } else {
-        printf("<fail>\n");
-        retStatus = STATUS_OPERATION_TIMED_OUT;
-        alive = FALSE;
     }
-    MUTEX_UNLOCK(pSampleConfiguration->answerLock);
 
 CleanUp:
-
     if (retStatus != STATUS_SUCCESS) {
         printf("[KVS Viewer] Terminated with status code 0x%08x", retStatus);
     }
@@ -152,12 +159,12 @@ CleanUp:
     if (pSampleConfiguration != NULL) {
         retStatus = freeSignalingClient(&pSampleConfiguration->signalingClientHandle);
         if (retStatus != STATUS_SUCCESS) {
-            printf("[KVS Master] freeSignalingClient(): operation returned status code: 0x%08x \n", retStatus);
+            printf("[KVS Viewer] freeSignalingClient(): operation returned status code: 0x%08x \n", retStatus);
         }
 
         retStatus = freeSampleConfiguration(&pSampleConfiguration);
         if (retStatus != STATUS_SUCCESS) {
-            printf("[KVS Master] freeSampleConfiguration(): operation returned status code: 0x%08x \n", retStatus);
+            printf("[KVS Viewer] freeSampleConfiguration(): operation returned status code: 0x%08x \n", retStatus);
         }
     }
     return alive;
@@ -169,10 +176,18 @@ int main(int argc, char** argv)
         printf("Usage: program channel cmd\n");
         return 0;
     }
+    signal(SIGINT, sigintHandler);
     system(argv[2]);
     for (;;) {
-        THREAD_SLEEP(30 * HUNDREDS_OF_NANOS_IN_A_SECOND);
-        if (!checkWebrtcStatus(argc, argv)) {
+        THREAD_SLEEP(APP_WEBRTC_CHECK_PERIOD * HUNDREDS_OF_NANOS_IN_A_SECOND);
+        BOOL status = FALSE;
+        int retries_left = APP_RETRY_COUNT;
+
+        do {
+            status = checkWebrtcStatus(argc, argv);
+        } while (retries_left-- > 0 && !status);
+
+        if (!status) {
             system(argv[2]);
         }
     }
