@@ -3,6 +3,9 @@
 extern PSampleConfiguration gSampleConfiguration;
 
 // #define VERBOSE
+PCHAR data_path;
+CHAR filePath[MAX_PATH_LEN + 1];
+Frame frames[100];
 
 INT32 main(INT32 argc, CHAR *argv[])
 {
@@ -14,6 +17,16 @@ INT32 main(INT32 argc, CHAR *argv[])
 
     // do tricketIce by default
     printf("[KVS Master] Using trickleICE by default\n");
+
+    data_path = GETENV("APP_DATA_PATH");
+    int i = 0;
+
+    for (i = 0; i < 100; i++) {
+        snprintf(filePath, MAX_PATH_LEN, "%s/%d.h264", data_path, i);
+        readFrameFromDisk(NULL, &(frames[i].size), filePath);
+        frames[i].frameData = malloc(frames[i].size);
+        readFrameFromDisk(frames[i].frameData, &frames[i].size, filePath);
+    }
 
     retStatus = createSampleConfiguration(argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME,
                                           SIGNALING_CHANNEL_ROLE_TYPE_MASTER,
@@ -28,28 +41,32 @@ INT32 main(INT32 argc, CHAR *argv[])
     printf("[KVS Master] Created signaling channel %s\n", (argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME));
 
     // Set the audio and video handlers
-    pSampleConfiguration->audioSource = sendAudioPackets;
+    //pSampleConfiguration->audioSource = sendAudioPackets;
     pSampleConfiguration->videoSource = sendVideoPackets;
-    pSampleConfiguration->receiveAudioVideoSource = sampleReceiveAudioFrame;
+//    pSampleConfiguration->receiveAudioVideoSource = sampleReceiveAudioFrame;
     pSampleConfiguration->onDataChannel = onDataChannel;
     pSampleConfiguration->mediaType = SAMPLE_STREAMING_AUDIO_VIDEO;
     printf("[KVS Master] Finished setting audio and video handlers\n");
 
     // Check if the samples are present
 
-    retStatus = readFrameFromDisk(NULL, &frameSize, "./h264SampleFrames/frame-001.h264");
+    /*
+    retStatus = readFrameFromDisk(NULL, &frameSize, "./data/0.h264");
     if(retStatus != STATUS_SUCCESS) {
         printf("[KVS Master] readFrameFromDisk(): operation returned status code: 0x%08x \n", retStatus);
         goto CleanUp;
     }
+    */
     printf("[KVS Master] Checked sample video frame availability....available\n");
 
+    /*
     retStatus = readFrameFromDisk(NULL, &frameSize, "./opusSampleFrames/sample-001.opus");
     if(retStatus != STATUS_SUCCESS) {
         printf("[KVS Master] readFrameFromDisk(): operation returned status code: 0x%08x \n", retStatus);
         goto CleanUp;
     }
     printf("[KVS Master] Checked sample audio frame availability....available\n");
+    */
 
     // Initialize KVS WebRTC. This must be done before anything else, and must only be done once.
     retStatus = initKvsWebRtc();
@@ -166,7 +183,6 @@ PVOID sendVideoPackets(PVOID args)
     PSampleConfiguration pSampleConfiguration = (PSampleConfiguration) args;
     Frame frame;
     UINT32 fileIndex = 0, frameSize;
-    CHAR filePath[MAX_PATH_LEN + 1];
     STATUS status;
     UINT32 i;
 
@@ -175,18 +191,15 @@ PVOID sendVideoPackets(PVOID args)
         goto CleanUp;
     }
 
-    frame.presentationTs = 0;
+    frame.presentationTs = 0; 
 
     while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->appTerminateFlag)) {
-        fileIndex = fileIndex % NUMBER_OF_H264_FRAME_FILES + 1;
-        snprintf(filePath, MAX_PATH_LEN, "./h264SampleFrames/frame-%03d.h264", fileIndex);
-
-        retStatus = readFrameFromDisk(NULL, &frameSize, filePath);
-        if(retStatus != STATUS_SUCCESS) {
-            printf("[KVS Master] readFrameFromDisk(): operation returned status code: 0x%08x \n", retStatus);
-            goto CleanUp;
-        }
-
+        frame.frameData = frames[fileIndex % 100].frameData;
+        frame.size = frames[fileIndex % 100].size;
+        frame.presentationTs = GETTIME(); 
+        fileIndex++;
+        
+        /*
         // Re-alloc if needed
         if (frameSize > pSampleConfiguration->videoBufferSize) {
             pSampleConfiguration->pVideoFrameBuffer = (PBYTE) realloc(pSampleConfiguration->pVideoFrameBuffer, frameSize);
@@ -200,16 +213,8 @@ PVOID sendVideoPackets(PVOID args)
             pSampleConfiguration->videoBufferSize = frameSize;
         }
 
-        frame.frameData = pSampleConfiguration->pVideoFrameBuffer;
-        frame.size = frameSize;
-
-        retStatus = readFrameFromDisk(frame.frameData, &frameSize, filePath);
-        if(retStatus != STATUS_SUCCESS) {
-            printf("[KVS Master] readFrameFromDisk(): operation returned status code: 0x%08x \n", retStatus);
-            goto CleanUp;
-        }
-
-        frame.presentationTs += SAMPLE_VIDEO_FRAME_DURATION;
+        memcpy(pSampleConfiguration->pVideoFrameBuffer, &(frames[i].frameData), frameSize);
+        */
 
         if (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->updatingSampleStreamingSessionList)) {
             ATOMIC_INCREMENT(&pSampleConfiguration->streamingSessionListReadingThreadCount);
@@ -250,7 +255,7 @@ PVOID sendAudioPackets(PVOID args)
 
     while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->appTerminateFlag)) {
         fileIndex = fileIndex % NUMBER_OF_OPUS_FRAME_FILES + 1;
-        snprintf(filePath, MAX_PATH_LEN, "./opusSampleFrames/sample-%03d.opus", fileIndex);
+//        snprintf(filePath, MAX_PATH_LEN, "./opusSampleFrames/sample-%03d.opus", fileIndex);
 
         retStatus = readFrameFromDisk(NULL, &frameSize, filePath);
         if(retStatus != STATUS_SUCCESS) {
