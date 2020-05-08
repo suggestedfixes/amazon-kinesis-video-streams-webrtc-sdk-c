@@ -172,6 +172,7 @@ matrix:
             - gcc-arm-linux-gnueabihf
             - g++-arm-linux-gnueabihf
             - binutils-arm-linux-gnueabihf
+            - qemu-user-static
       compiler: gcc
       before_install:
         # TODO: Remove the following line. This is only a workaround for enabling IPv6, https://github.com/travis-ci/travis-ci/issues/8891.
@@ -180,7 +181,10 @@ matrix:
         - export CC=arm-linux-gnueabihf-gcc CXX=arm-linux-gnueabihf-g++
         - mkdir build && cd build
         - cmake .. -DBUILD_OPENSSL=TRUE -DBUILD_OPENSSL_PLATFORM=linux-generic32 -DBUILD_LIBSRTP_HOST_PLATFORM=x86_64-unknown-linux-gnu -DBUILD_LIBSRTP_DESTINATION_PLATFORM=arm-unknown-linux-uclibcgnueabihf
-      script: make
+      script:
+        - make
+        - export QEMU_LD_PREFIX=/usr/arm-linux-gnueabihf
+        - timeout --signal=SIGABRT 40m ./tst/webrtc_client_test
 
     # Generate Doxygen
     - name: "Generate Doxygen"
