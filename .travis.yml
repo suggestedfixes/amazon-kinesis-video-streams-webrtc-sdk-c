@@ -180,7 +180,7 @@ matrix:
       before_script:
         - export CC=arm-linux-gnueabihf-gcc CXX=arm-linux-gnueabihf-g++
         - mkdir build && cd build
-        - cmake .. -DBUILD_OPENSSL=TRUE -DBUILD_OPENSSL_PLATFORM=linux-generic32 -DBUILD_LIBSRTP_HOST_PLATFORM=x86_64-unknown-linux-gnu -DBUILD_LIBSRTP_DESTINATION_PLATFORM=arm-unknown-linux-uclibcgnueabihf
+        - cmake .. -DBUILD_OPENSSL=TRUE -DBUILD_OPENSSL_PLATFORM=linux-generic32 -DBUILD_LIBSRTP_HOST_PLATFORM=x86_64-unknown-linux-gnu -DBUILD_LIBSRTP_DESTINATION_PLATFORM=arm-unknown-linux-uclibcgnueabihf -DBUILD_TEST=TRUE
       script:
         - make
         - export QEMU_LD_PREFIX=/usr/arm-linux-gnueabihf
