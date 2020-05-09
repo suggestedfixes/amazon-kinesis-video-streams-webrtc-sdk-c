@@ -667,7 +667,7 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
     pSampleConfiguration->channelInfo.pTags = NULL;
     pSampleConfiguration->channelInfo.channelType = SIGNALING_CHANNEL_TYPE_SINGLE_MASTER;
     pSampleConfiguration->channelInfo.channelRoleType = roleType;
-    pSampleConfiguration->channelInfo.cachingPolicy = SIGNALING_API_CALL_CACHE_TYPE_DESCRIBE_GETENDPOINT;
+    pSampleConfiguration->channelInfo.cachingPolicy = SIGNALING_API_CALL_CACHE_TYPE_FILE;
     pSampleConfiguration->channelInfo.cachingPeriod = SIGNALING_API_CALL_CACHE_TTL_SENTINEL_VALUE;
     pSampleConfiguration->channelInfo.asyncIceServerConfig = TRUE;
     pSampleConfiguration->channelInfo.retry = TRUE;
@@ -681,6 +681,7 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
     pSampleConfiguration->signalingClientCallbacks.customData = (UINT64) pSampleConfiguration;
 
     pSampleConfiguration->clientInfo.version = SIGNALING_CLIENT_INFO_CURRENT_VERSION;
+    pSampleConfiguration->clientInfo.loggingLevel = logLevel;
 
     ATOMIC_STORE_BOOL(&pSampleConfiguration->interrupted, FALSE);
     ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, FALSE);
