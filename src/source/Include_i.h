@@ -11,12 +11,6 @@ extern "C" {
 #endif
 
 ////////////////////////////////////////////////////
-// Project forward declarations
-////////////////////////////////////////////////////
-struct __TurnConnection;
-struct __SocketConnection;
-
-////////////////////////////////////////////////////
 // Project include files
 ////////////////////////////////////////////////////
 #include <com/amazonaws/kinesis/video/webrtcclient/Include.h>
@@ -49,6 +43,7 @@ struct __SocketConnection;
 #include <net/if.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <netinet/tcp.h>
 #endif
 
 // Max uFrag and uPwd length as documented in https://tools.ietf.org/html/rfc5245#section-15.4
@@ -71,7 +66,6 @@ struct __SocketConnection;
 #define IPV6_ADDRESS_LENGTH             (UINT16) 16
 #define IPV4_ADDRESS_LENGTH             (UINT16) 4
 
-
 #define CERTIFICATE_FINGERPRINT_LENGTH 160
 
 typedef enum {
@@ -90,6 +84,13 @@ typedef struct {
 
 // Used for ensuring alignment
 #define ALIGN_UP_TO_MACHINE_WORD(x)             ROUND_UP((x), SIZEOF(SIZE_T))
+
+////////////////////////////////////////////////////
+// Project forward declarations
+////////////////////////////////////////////////////
+struct __TurnConnection;
+struct __SocketConnection;
+STATUS generateJSONSafeString(PCHAR, UINT32);
 
 ////////////////////////////////////////////////////
 // Project internal includes
@@ -121,6 +122,7 @@ typedef struct {
 #include "Rtp/Codecs/RtpH264Payloader.h"
 #include "Rtp/Codecs/RtpOpusPayloader.h"
 #include "Rtp/Codecs/RtpG711Payloader.h"
+#include "Signaling/FileCache.h"
 #include "Signaling/Signaling.h"
 #include "Signaling/ChannelInfo.h"
 #include "Signaling/StateMachine.h"

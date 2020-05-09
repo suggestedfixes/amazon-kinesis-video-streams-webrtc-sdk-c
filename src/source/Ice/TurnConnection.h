@@ -36,8 +36,9 @@ extern "C" {
 #define DEFAULT_TURN_ALLOCATION_REFRESH_GRACE_PERIOD                    (30 * HUNDREDS_OF_NANOS_IN_A_SECOND)
 #define DEFAULT_TURN_PERMISSION_REFRESH_GRACE_PERIOD                    (30 * HUNDREDS_OF_NANOS_IN_A_SECOND)
 
-#define DEFAULT_TURN_MESSAGE_SEND_CHANNEL_DATA_BUFFER_LEN               (10 * 1024)
-#define DEFAULT_TURN_MESSAGE_RECV_CHANNEL_DATA_BUFFER_LEN               (10 * 1024)
+#define MAX_TURN_CHANNEL_DATA_MESSAGE_SIZE                              4 + 65536 /* header + data */
+#define DEFAULT_TURN_MESSAGE_SEND_CHANNEL_DATA_BUFFER_LEN               MAX_TURN_CHANNEL_DATA_MESSAGE_SIZE
+#define DEFAULT_TURN_MESSAGE_RECV_CHANNEL_DATA_BUFFER_LEN               MAX_TURN_CHANNEL_DATA_MESSAGE_SIZE
 #define DEFAULT_TURN_CHANNEL_DATA_BUFFER_SIZE                           512
 #define DEFAULT_TURN_MAX_PEER_COUNT                                     16
 
@@ -116,6 +117,7 @@ struct __TurnConnection {
     volatile ATOMIC_BOOL stopTurnConnection;
     volatile ATOMIC_BOOL allocationFreed;
     volatile ATOMIC_BOOL relayAddressReceived;
+    volatile SIZE_T timerCallbackId;
 
     // realm attribute in Allocation response
     CHAR turnRealm[STUN_MAX_REALM_LEN + 1];
@@ -142,8 +144,6 @@ struct __TurnConnection {
     UINT64 stateTimeoutTime;
 
     STATUS errorStatus;
-
-    UINT32 timerCallbackId;
 
     PStunPacket pTurnPacket;
     PStunPacket pTurnCreatePermissionPacket;
@@ -203,8 +203,9 @@ STATUS turnConnectionIncomingDataHandler(PTurnConnection, PBYTE, UINT32,
 
 STATUS turnConnectionHandleStun(PTurnConnection, PBYTE, UINT32);
 STATUS turnConnectionHandleStunError(PTurnConnection, PBYTE, UINT32);
-STATUS turnConnectionHandleChannelData(PTurnConnection, PBYTE, UINT32, PTurnChannelData, PUINT32);
-STATUS turnConnectionHandleChannelDataTcpMode(PTurnConnection, PBYTE, UINT32, PTurnChannelData, PUINT32);
+STATUS turnConnectionHandleChannelData(PTurnConnection, PBYTE, UINT32, PTurnChannelData, PUINT32, PUINT32);
+STATUS turnConnectionHandleChannelDataTcpMode(PTurnConnection, PBYTE, UINT32, PTurnChannelData, PUINT32, PUINT32);
+VOID turnConnectionFatalError(PTurnConnection, STATUS);
 
 PTurnPeer turnConnectionGetPeerWithChannelNumber(PTurnConnection, UINT16);
 PTurnPeer turnConnectionGetPeerWithIp(PTurnConnection, PKvsIpAddress);

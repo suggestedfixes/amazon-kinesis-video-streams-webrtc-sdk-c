@@ -185,50 +185,11 @@ CleanUp:
     return retStatus;
 }
 
-// only work with ipv4 right now
-STATUS populateIpFromString(PKvsIpAddress pKvsIpAddress, PCHAR pBuff)
-{
-    ENTERS();
-    STATUS retStatus = STATUS_SUCCESS;
-    PCHAR curr, tail, next;
-    UINT8 octet = 0;
-    UINT32 ipValue;
-
-    CHK(pKvsIpAddress != NULL && pBuff != NULL, STATUS_NULL_ARG);
-    CHK(STRNLEN(pBuff, KVS_MAX_IPV4_ADDRESS_STRING_LEN) > 0, STATUS_INVALID_ARG);
-
-    curr = pBuff;
-    tail = pBuff + STRLEN(pBuff);
-    // first 3 octet should always end with a '.', the last octet may end with ' ' or '\0'
-    while ((next = STRNCHR(curr, tail - curr, '.')) != NULL && octet < 3) {
-        CHK_STATUS(STRTOUI32(curr, curr + (next - curr), 10, &ipValue));
-        pKvsIpAddress->address[octet] = (UINT8) ipValue;
-        octet++;
-
-        curr = next + 1;
-    }
-
-    // work with string containing just ip address and string that has ip address as substring
-    if ((next = STRNCHR(curr, tail - curr, ' ')) != NULL || (next = STRNCHR(curr, tail - curr, '\0')) != NULL) {
-        CHK_STATUS(STRTOUI32(curr, curr + (next - curr), 10, &ipValue));
-        pKvsIpAddress->address[octet] = (UINT8) ipValue;
-        octet++;
-    }
-
-    CHK(octet == 4, STATUS_ICE_CANDIDATE_STRING_INVALID_IP); // IPv4 MUST have 4 octets
-CleanUp:
-
-    CHK_LOG_ERR(retStatus);
-
-    LEAVES();
-    return retStatus;
-}
-
 STATUS parseIceServer(PIceServer pIceServer, PCHAR url, PCHAR username, PCHAR credential)
 {
     ENTERS();
     STATUS retStatus = STATUS_SUCCESS;
-    PCHAR separator = NULL, urlNoPrefix = NULL;
+    PCHAR separator = NULL, urlNoPrefix = NULL, paramStart = NULL;
     UINT32 port = ICE_STUN_DEFAULT_PORT;
 
     // username and credential is only mandatory for turn server
@@ -247,13 +208,23 @@ STATUS parseIceServer(PIceServer pIceServer, PCHAR url, PCHAR username, PCHAR cr
         STRNCPY(pIceServer->credential, credential, MAX_ICE_CONFIG_CREDENTIAL_LEN);
         urlNoPrefix = STRCHR(url, ':') + 1;
         pIceServer->isTurn = TRUE;
+        pIceServer->isSecure = STRNCMP(ICE_URL_PREFIX_TURN_SECURE, url, STRLEN(ICE_URL_PREFIX_TURN_SECURE)) == 0;
+
+        pIceServer->transport = KVS_SOCKET_PROTOCOL_NONE;
+        if (STRSTR(url, ICE_URL_TRANSPORT_UDP) != NULL) {
+            pIceServer->transport = KVS_SOCKET_PROTOCOL_UDP;
+        } else if (STRSTR(url, ICE_URL_TRANSPORT_TCP) != NULL) {
+            pIceServer->transport = KVS_SOCKET_PROTOCOL_TCP;
+        }
+
     } else {
         CHK(FALSE, STATUS_ICE_URL_INVALID_PREFIX);
     }
 
     if ((separator = STRCHR(urlNoPrefix, ':')) != NULL) {
         separator++;
-        CHK_STATUS(STRTOUI32(separator, separator + STRLEN(separator), 10, &port));
+        paramStart = STRCHR(urlNoPrefix, '?');
+        CHK_STATUS(STRTOUI32(separator, paramStart, 10, &port));
         STRNCPY(pIceServer->url, urlNoPrefix, separator - urlNoPrefix - 1);
         // need to null terminate since we are not copying the entire urlNoPrefix
         pIceServer->url[separator - urlNoPrefix - 1] = '\0';

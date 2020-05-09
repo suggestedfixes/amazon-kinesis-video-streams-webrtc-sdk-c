@@ -88,7 +88,7 @@ STATUS allocateSctp(PKvsPeerConnection pKvsPeerConnection)
     for (; currentDataChannelId < data.currentDataChannelId; currentDataChannelId += 2) {
         CHK_STATUS(hashTableGet(pKvsPeerConnection->pDataChannels, currentDataChannelId, (PUINT64) &pKvsDataChannel));
         CHK(pKvsDataChannel != NULL, STATUS_INTERNAL_ERROR);
-        sctpSessionWriteDcep(pKvsPeerConnection->pSctpSession, currentDataChannelId, pKvsDataChannel->dataChannel.name, STRLEN(pKvsDataChannel->dataChannel.name), NULL);
+        sctpSessionWriteDcep(pKvsPeerConnection->pSctpSession, currentDataChannelId, pKvsDataChannel->dataChannel.name, STRLEN(pKvsDataChannel->dataChannel.name), &pKvsDataChannel->rtcDataChannelInit);
 
         if (pKvsDataChannel->onOpen != NULL) {
             pKvsDataChannel->onOpen(pKvsDataChannel->onOpenCustomData);
@@ -660,6 +660,36 @@ CleanUp:
     if (locked) {
         MUTEX_UNLOCK(pKvsPeerConnection->peerConnectionObjLock);
     }
+
+    LEAVES();
+    return retStatus;
+}
+
+STATUS peerConnectionGetLocalDescription(PRtcPeerConnection pRtcPeerConnection, PRtcSessionDescriptionInit pRtcSessionDescriptionInit)
+{
+    ENTERS();
+    STATUS retStatus = STATUS_SUCCESS;
+    SessionDescription sessionDescription;
+    UINT32 deserializeLen = 0;
+    PKvsPeerConnection pKvsPeerConnection = (PKvsPeerConnection) pRtcPeerConnection;
+
+    CHK(pRtcPeerConnection != NULL && pRtcSessionDescriptionInit != NULL, STATUS_NULL_ARG);
+
+    MEMSET(&sessionDescription, 0x00, SIZEOF(SessionDescription));
+
+    if (pKvsPeerConnection->isOffer) {
+        pRtcSessionDescriptionInit->type = SDP_TYPE_OFFER;
+    } else {
+        pRtcSessionDescriptionInit->type = SDP_TYPE_ANSWER;
+    }
+
+    CHK_STATUS(populateSessionDescription(pKvsPeerConnection, &(pKvsPeerConnection->remoteSessionDescription), &sessionDescription));
+    CHK_STATUS(deserializeSessionDescription(&sessionDescription, NULL, &deserializeLen));
+    CHK(deserializeLen <= MAX_SESSION_DESCRIPTION_INIT_SDP_LEN, STATUS_NOT_ENOUGH_MEMORY);
+
+    CHK_STATUS(deserializeSessionDescription(&sessionDescription, pRtcSessionDescriptionInit->sdp, &deserializeLen));
+
+CleanUp:
 
     LEAVES();
     return retStatus;
