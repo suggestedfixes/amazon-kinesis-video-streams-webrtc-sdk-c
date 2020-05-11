@@ -13,7 +13,7 @@ extern "C" {
 #define NUMBER_OF_H264_FRAME_FILES 403
 #define NUMBER_OF_OPUS_FRAME_FILES 618
 #define DEFAULT_FPS_VALUE 20
-#define DEFAULT_MAX_CONCURRENT_STREAMING_SESSION 10
+#define DEFAULT_MAX_CONCURRENT_STREAMING_SESSION 100 
 
 #define SAMPLE_MASTER_CLIENT_ID "ProducerMaster"
 #define SAMPLE_VIEWER_CLIENT_ID "ConsumerViewer"
@@ -22,6 +22,9 @@ extern "C" {
 #define SAMPLE_AUDIO_FRAME_DURATION (20 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND)
 #define SAMPLE_VIDEO_FRAME_DURATION (HUNDREDS_OF_NANOS_IN_A_SECOND / DEFAULT_FPS_VALUE)
 
+#define ASYNC_ICE_CONFIG_INFO_WAIT_TIMEOUT                                      (3 * HUNDREDS_OF_NANOS_IN_A_SECOND)
+#define ICE_CONFIG_INFO_POLL_PERIOD                                             (20 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND)
+
 #define CA_CERT_PEM_FILE_EXTENSION ".pem"
 
 #define APP_RECEIVE_VIDEO_AUDIO TRUE
@@ -29,10 +32,10 @@ extern "C" {
 #define APP_TRICKLE_ICE TRUE
 #define APP_TURN TRUE
 
-#define APP_GST_ERR_RECOVERY FALSE
+#define APP_GST_ERR_RECOVERY TRUE
 #define APP_GST_EOS_EXIT FALSE
 #define APP_GST_RTSPSRC_EXT FALSE
-#define APP_GST_ENFORCE_TCP FALSE
+#define APP_GST_ENFORCE_TCP TRUE
 #define APP_GST_RTSPSRC_AFT FALSE
 #define APP_GST_STRLEN 1024
 
@@ -105,6 +108,7 @@ struct __SampleStreamingSession {
     UINT64 videoTimestamp;
     CHAR peerId[MAX_SIGNALING_CLIENT_ID_LEN + 1];
     TID receiveAudioVideoSenderTid;
+    UINT64 firstSdpMsgReceiveTime;
 
     // this is called when the SampleStreamingSession is being freed
     StreamSessionShutdownCallback shutdownCallback;
@@ -137,6 +141,7 @@ VOID sampleBandwidthEstimationHandler(UINT64, DOUBLE);
 VOID onDataChannel(UINT64, PRtcDataChannel);
 VOID onConnectionStateChange(UINT64, RTC_PEER_CONNECTION_STATE);
 STATUS sessionCleanupWait(PSampleConfiguration);
+STATUS awaitGetIceConfigInfoCount(SIGNALING_CLIENT_HANDLE, PUINT32);
 STATUS genCerts(PSampleConfiguration pConfig);
 VOID genRandomId();
 
