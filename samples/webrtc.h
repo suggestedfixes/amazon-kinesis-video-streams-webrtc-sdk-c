@@ -13,7 +13,7 @@ extern "C" {
 #define NUMBER_OF_H264_FRAME_FILES 403
 #define NUMBER_OF_OPUS_FRAME_FILES 618
 #define DEFAULT_FPS_VALUE 20
-#define DEFAULT_MAX_CONCURRENT_STREAMING_SESSION 100 
+#define DEFAULT_MAX_CONCURRENT_STREAMING_SESSION 100
 
 #define SAMPLE_MASTER_CLIENT_ID "ProducerMaster"
 #define SAMPLE_VIEWER_CLIENT_ID "ConsumerViewer"
@@ -22,8 +22,8 @@ extern "C" {
 #define SAMPLE_AUDIO_FRAME_DURATION (20 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND)
 #define SAMPLE_VIDEO_FRAME_DURATION (HUNDREDS_OF_NANOS_IN_A_SECOND / DEFAULT_FPS_VALUE)
 
-#define ASYNC_ICE_CONFIG_INFO_WAIT_TIMEOUT                                      (3 * HUNDREDS_OF_NANOS_IN_A_SECOND)
-#define ICE_CONFIG_INFO_POLL_PERIOD                                             (20 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND)
+#define ASYNC_ICE_CONFIG_INFO_WAIT_TIMEOUT (3 * HUNDREDS_OF_NANOS_IN_A_SECOND)
+#define ICE_CONFIG_INFO_POLL_PERIOD (20 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND)
 
 #define CA_CERT_PEM_FILE_EXTENSION ".pem"
 
@@ -38,6 +38,7 @@ extern "C" {
 #define APP_GST_ENFORCE_TCP TRUE
 #define APP_GST_RTSPSRC_AFT FALSE
 #define APP_GST_STRLEN 1024
+#define APP_DEFAULT_SUBSTREAM_ID 22
 
 #define APP_PREGEN_CERTS TRUE
 #define APP_GENCERTBITS_OVERRIDE 1024
@@ -98,6 +99,7 @@ struct __SampleStreamingSession {
     volatile ATOMIC_BOOL terminateFlag;
     volatile ATOMIC_BOOL candidateGatheringDone;
     volatile ATOMIC_BOOL peerIdReceived;
+    volatile ATOMIC_BOOL mainstream;
     volatile SIZE_T frameIndex;
     PRtcPeerConnection pPeerConnection;
     PRtcRtpTransceiver pVideoRtcRtpTransceiver;

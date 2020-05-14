@@ -20,14 +20,17 @@ VOID sigintHandler(INT32 sigNum)
 
 VOID onDataChannelMessage(UINT64 customData, BOOL isBinary, PBYTE pMessage, UINT32 pMessageLen)
 {
-    UNUSED_PARAM(customData);
+    PSampleStreamingSession pSession = (PSampleStreamingSession)customData;
     if (isBinary) {
         DLOGD("DataChannel Binary Message");
     } else {
         DLOGD(">>>>>>>>DataChannel String Message: %.*s\n", pMessageLen, pMessage);
     }
-    if (strcmp(pMessage, "killvideo") == 0) {
-        DLOGD(">>>>>>>>>DataChannel got killvideo");
+    if (strcmp(pMessage, "mainstream") == 0) {
+        ATOMIC_STORE_BOOL(&pSession->mainstream, TRUE);
+    }
+    if (strcmp(pMessage, "substream") == 0) {
+        ATOMIC_STORE_BOOL(&pSession->mainstream, FALSE);
     }
 }
 
@@ -235,7 +238,7 @@ STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSe
 
     CHK_STATUS(respondWithAnswer(pSampleStreamingSession));
     DLOGD("time taken to send answer %" PRIu64 " ms",
-                      (GETTIME() - pSampleStreamingSession->firstSdpMsgReceiveTime) / HUNDREDS_OF_NANOS_IN_A_MILLISECOND);
+        (GETTIME() - pSampleStreamingSession->firstSdpMsgReceiveTime) / HUNDREDS_OF_NANOS_IN_A_MILLISECOND);
     if (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->mediaThreadStarted) || !IS_VALID_TID_VALUE(pSampleConfiguration->videoSenderTid)) {
         ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, TRUE);
         if (pSampleConfiguration->videoSource != NULL) {
@@ -385,7 +388,6 @@ CleanUp:
 
     return retStatus;
 }
-
 
 STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, PCHAR peerId, BOOL isMaster,
     PSampleStreamingSession* ppSampleStreamingSession)
@@ -618,8 +620,7 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
 
     CHK_STATUS(lookForSslCert(&pSampleConfiguration));
 
-    if (NULL == (pLogLevel = getenv(DEBUG_LOG_LEVEL_ENV_VAR)) ||
-        (STATUS_SUCCESS != STRTOUI32(pLogLevel, NULL, 10, &logLevel))) {
+    if (NULL == (pLogLevel = getenv(DEBUG_LOG_LEVEL_ENV_VAR)) || (STATUS_SUCCESS != STRTOUI32(pLogLevel, NULL, 10, &logLevel))) {
         logLevel = LOG_LEVEL_WARN;
     }
 
@@ -646,7 +647,7 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
     pSampleConfiguration->channelInfo.pTags = NULL;
     pSampleConfiguration->channelInfo.channelType = SIGNALING_CHANNEL_TYPE_SINGLE_MASTER;
     pSampleConfiguration->channelInfo.channelRoleType = roleType;
-    pSampleConfiguration->channelInfo.cachingPolicy =  SIGNALING_API_CALL_CACHE_TYPE_NONE;
+    pSampleConfiguration->channelInfo.cachingPolicy = SIGNALING_API_CALL_CACHE_TYPE_NONE;
     pSampleConfiguration->channelInfo.cachingPeriod = SIGNALING_API_CALL_CACHE_TTL_SENTINEL_VALUE;
     pSampleConfiguration->channelInfo.asyncIceServerConfig = TRUE;
     pSampleConfiguration->channelInfo.retry = TRUE;

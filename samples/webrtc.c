@@ -144,11 +144,20 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
                     frame.presentationTs = pSampleStreamingSession->audioTimestamp;
                     frame.decodingTs = frame.presentationTs;
                     pSampleStreamingSession->audioTimestamp = time;
+                } else if (trackid == DEFAULT_VIDEO_TRACK_ID) {
+                    if (ATOMIC_LOAD_BOOL(&pSampleStreamingSession->mainstream)) {
+                        pRtcRtpTransceiver = pSampleStreamingSession->pVideoRtcRtpTransceiver;
+                        frame.presentationTs = pSampleStreamingSession->videoTimestamp;
+                        frame.decodingTs = frame.presentationTs;
+                        pSampleStreamingSession->videoTimestamp = time;
+                    }
                 } else {
-                    pRtcRtpTransceiver = pSampleStreamingSession->pVideoRtcRtpTransceiver;
-                    frame.presentationTs = pSampleStreamingSession->videoTimestamp;
-                    frame.decodingTs = frame.presentationTs;
-                    pSampleStreamingSession->videoTimestamp = time;
+                    if (!ATOMIC_LOAD_BOOL(&pSampleStreamingSession->mainstream)) {
+                        pRtcRtpTransceiver = pSampleStreamingSession->pVideoRtcRtpTransceiver;
+                        frame.presentationTs = pSampleStreamingSession->videoTimestamp;
+                        frame.decodingTs = frame.presentationTs;
+                        pSampleStreamingSession->videoTimestamp = time;
+                    }
                 }
 
                 status = writeFrame(pRtcRtpTransceiver, &frame);
@@ -183,6 +192,11 @@ GstFlowReturn on_new_sample_video(GstElement* sink, gpointer data)
     return on_new_sample(sink, data, DEFAULT_VIDEO_TRACK_ID);
 }
 
+GstFlowReturn on_new_sample_video_substream(GstElement* sink, gpointer data)
+{
+    return on_new_sample(sink, data, APP_DEFAULT_SUBSTREAM_ID);
+}
+
 GstFlowReturn on_new_sample_audio(GstElement* sink, gpointer data)
 {
     return on_new_sample(sink, data, DEFAULT_AUDIO_TRACK_ID);
@@ -191,7 +205,7 @@ GstFlowReturn on_new_sample_audio(GstElement* sink, gpointer data)
 PVOID sendGstreamerAudioVideo(PVOID args)
 {
     STATUS retStatus = STATUS_SUCCESS;
-    GstElement *appsinkVideo = NULL, *appsinkAudio = NULL, *pipeline = NULL;
+    GstElement *appsinkVideo = NULL, *appsinkVideoSubstream = NULL, *appsinkAudio = NULL, *pipeline = NULL;
     GstBus* bus = NULL;
     GstMessage* msg = NULL;
     GError* error = NULL;
@@ -203,6 +217,7 @@ PVOID sendGstreamerAudioVideo(PVOID args)
     PSampleConfiguration pSampleConfiguration = (PSampleConfiguration)args;
     PCHAR gstStr = NULL;
     PCHAR rtspSrc = GETENV("APP_RTSP_SRC");
+    PCHAR rtspSrcSubstream = GETENV("APP_RTSP_SRC_SUBSTREAM");
     BOOL gstCleaned = FALSE;
 
     CHK(pSampleConfiguration != NULL, STATUS_NULL_ARG);
@@ -232,7 +247,11 @@ PVOID sendGstreamerAudioVideo(PVOID args)
         gstStr = "rtspsrc %s location=%s short-header=TRUE %s ! %s rtph264depay ! "
                  "video/"
                  "x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! "
-                 "appsink sync=TRUE emit-signals=TRUE name=appsink-video";
+                 "appsink sync=TRUE emit-signals=TRUE name=appsink-video "
+                 "rtspsrc location=%s short-header=TRUE ! rtph264depay ! "
+                 "video/"
+                 "x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! "
+                 "appsink sync=TRUE emit-signals=TRUE name=appsink-video-substream ";
         break;
 
     case SAMPLE_STREAMING_AUDIO_VIDEO:
@@ -249,9 +268,10 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 
     SPRINTF(appGstStr, gstStr, APP_GST_RTSPSRC_EXT ? "num-buffers=180" : "",
         rtspSrc, APP_GST_ENFORCE_TCP ? "protocols=tcp" : "",
-        APP_GST_RTSPSRC_AFT ? "queue leaky=2 ! " : "");
+        APP_GST_RTSPSRC_AFT ? "queue leaky=2 ! " : "",
+        rtspSrcSubstream);
 
-    printf("%s\n", appGstStr);
+    DLOGD("%s\n", appGstStr);
 
     // recreate gstreamer pipeline on error or eof if enabled
     // blocks on g_main_loop_run
@@ -263,13 +283,21 @@ PVOID sendGstreamerAudioVideo(PVOID args)
             "Failed to launch gstreamer");
 
         appsinkVideo = gst_bin_get_by_name(GST_BIN(pipeline), "appsink-video");
+        appsinkVideoSubstream = gst_bin_get_by_name(GST_BIN(pipeline), "appsink-video-substream");
         appsinkAudio = gst_bin_get_by_name(GST_BIN(pipeline), "appsink-audio");
+
         CHK_ERR(appsinkVideo != NULL || appsinkAudio != NULL, STATUS_INTERNAL_ERROR,
             "cant find appsink");
 
         if (appsinkVideo != NULL) {
             g_signal_connect(appsinkVideo, "new-sample",
                 G_CALLBACK(on_new_sample_video),
+                (gpointer)pSampleConfiguration);
+        }
+
+        if (appsinkVideoSubstream != NULL) {
+            g_signal_connect(appsinkVideoSubstream, "new-sample",
+                G_CALLBACK(on_new_sample_video_substream),
                 (gpointer)pSampleConfiguration);
         }
 
