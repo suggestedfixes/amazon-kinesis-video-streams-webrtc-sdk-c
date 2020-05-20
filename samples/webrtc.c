@@ -150,6 +150,10 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
                         frame.presentationTs = pSampleStreamingSession->videoTimestamp;
                         frame.decodingTs = frame.presentationTs;
                         pSampleStreamingSession->videoTimestamp = time;
+                        status = writeFrame(pRtcRtpTransceiver, &frame);
+                        if (STATUS_FAILED(status)) {
+                            DLOGD("writeFrame failed with 0x%08x", status);
+                        }
                     }
                 } else {
                     if (!ATOMIC_LOAD_BOOL(&pSampleStreamingSession->mainstream)) {
@@ -157,12 +161,11 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
                         frame.presentationTs = pSampleStreamingSession->videoTimestamp;
                         frame.decodingTs = frame.presentationTs;
                         pSampleStreamingSession->videoTimestamp = time;
+                        status = writeFrame(pRtcRtpTransceiver, &frame);
+                        if (STATUS_FAILED(status)) {
+                            DLOGD("writeFrame failed with 0x%08x", status);
+                        }
                     }
-                }
-
-                status = writeFrame(pRtcRtpTransceiver, &frame);
-                if (STATUS_FAILED(status)) {
-                    DLOGD("writeFrame failed with 0x%08x", status);
                 }
             }
             ATOMIC_DECREMENT(
@@ -244,14 +247,14 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 
     switch (pSampleConfiguration->mediaType) {
     case SAMPLE_STREAMING_VIDEO_ONLY:
-        gstStr = "rtspsrc %s location=%s short-header=TRUE %s ! %s rtph264depay ! "
+        gstStr = "rtspsrc %s location=%s short-header=TRUE %s drop-on-latency=TRUE ! %s rtph264depay ! "
                  "video/"
                  "x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! "
-                 "appsink sync=TRUE emit-signals=TRUE name=appsink-video "
-                 "rtspsrc location=%s short-header=TRUE ! rtph264depay ! "
+                 "appsink sync=FALSE emit-signals=TRUE name=appsink-video "
+                 "rtspsrc location=%s short-header=TRUE protocols=tcp drop-on-latency=TRUE ! queue ! rtph264depay ! "
                  "video/"
                  "x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! "
-                 "appsink sync=TRUE emit-signals=TRUE name=appsink-video-substream ";
+                 "appsink sync=FALSE emit-signals=TRUE name=appsink-video-substream ";
         break;
 
     case SAMPLE_STREAMING_AUDIO_VIDEO:
@@ -591,11 +594,12 @@ int main(int argc, char** argv)
 
     if (argc >= 3) {
         if (strcmp(argv[2], "nolog") != 0) {
-            THREAD_CREATE(&logId, logger, NULL);
+            THREAD_CREATE(&logId, std2fileLogger, APP_LOG_PATH);
         }
     } else {
-        THREAD_CREATE(&logId, logger, NULL);
+        THREAD_CREATE(&logId, std2fileLogger, APP_LOG_PATH);
     }
+
     for (;;) {
         THREAD_CREATE(&trampolineId, trampoline, (PVOID)argv);
         THREAD_JOIN(trampolineId, NULL);

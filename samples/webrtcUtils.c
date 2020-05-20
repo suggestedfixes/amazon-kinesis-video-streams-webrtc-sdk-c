@@ -18,6 +18,16 @@ VOID sigintHandler(INT32 sigNum)
     exit(0);
 }
 
+void setMainstream(PSampleStreamingSession pSession, BOOL mainstream)
+{
+    ATOMIC_STORE_BOOL(&pSession->pSampleConfiguration->updatingSampleStreamingSessionList, TRUE);
+    while (ATOMIC_LOAD(&pSession->pSampleConfiguration->streamingSessionListReadingThreadCount) != 0) {
+        THREAD_SLEEP(10 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND);
+    }
+    ATOMIC_STORE_BOOL(&pSession->mainstream, mainstream);
+    ATOMIC_STORE_BOOL(&pSession->pSampleConfiguration->updatingSampleStreamingSessionList, FALSE);
+}
+
 VOID onDataChannelMessage(UINT64 customData, BOOL isBinary, PBYTE pMessage, UINT32 pMessageLen)
 {
     PSampleStreamingSession pSession = (PSampleStreamingSession)customData;
@@ -26,11 +36,11 @@ VOID onDataChannelMessage(UINT64 customData, BOOL isBinary, PBYTE pMessage, UINT
     } else {
         DLOGD(">>>>>>>>DataChannel String Message: %.*s\n", pMessageLen, pMessage);
     }
-    if (strcmp(pMessage, "mainstream") == 0) {
-        ATOMIC_STORE_BOOL(&pSession->mainstream, TRUE);
+    if (strncmp(pMessage, "mainstream", 10) == 0) {
+        setMainstream(pSession, TRUE);
     }
-    if (strcmp(pMessage, "substream") == 0) {
-        ATOMIC_STORE_BOOL(&pSession->mainstream, FALSE);
+    if (strncmp(pMessage, "substream", 9) == 0) {
+        setMainstream(pSession, FALSE);
     }
 }
 
@@ -408,7 +418,7 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
     if (isMaster) {
         STRCPY(pSampleStreamingSession->peerId, peerId);
     } else {
-        STRCPY(pSampleStreamingSession->peerId, name_buffer);
+        STRCPY(pSampleStreamingSession->peerId, "monitor");
     }
     ATOMIC_STORE_BOOL(&pSampleStreamingSession->peerIdReceived, TRUE);
 
@@ -518,6 +528,7 @@ VOID sampleFrameHandler(UINT64 customData, PFrame pFrame)
 {
     PSampleStreamingSession pSampleStreamingSession = (PSampleStreamingSession)customData;
     DLOGV("Frame received. TrackId: %" PRIu64 ", Size: %u, Flags %u", pFrame->trackId, pFrame->size, pFrame->flags);
+    ATOMIC_STORE_BOOL(&pSampleStreamingSession->pSampleConfiguration->frameReceived, TRUE);
 }
 
 VOID sampleBandwidthEstimationHandler(UINT64 customData, DOUBLE maxiumBitrate)
@@ -826,4 +837,27 @@ VOID genRandomId()
         name_buffer[i] = app_peer_id_charset[(random() % 29) & 0x1f];
     }
     name_buffer[APP_PEER_ID_LENGTH] = 0;
+}
+
+VOID std2fileLogger(PVOID args)
+{
+    PCHAR filePath = (PCHAR)args;
+    char CMD_BUFFER[256];
+    // 5000 lines is about 5MB
+    int LINE_COUNT_LIMIT = 5000;
+    freopen(filePath, "a+", stdout);
+    freopen(filePath, "a+", stderr);
+    for (;;) {
+        THREAD_SLEEP(10 * HUNDREDS_OF_NANOS_IN_A_SECOND);
+        fflush(stdout);
+        fflush(stderr);
+        SPRINTF(CMD_BUFFER, "cat %s | tail -n%d > %s.bak\0", filePath, LINE_COUNT_LIMIT, filePath);
+        system(CMD_BUFFER);
+        SPRINTF(CMD_BUFFER, "cat %s.bak > %s\0", filePath, filePath);
+        system(CMD_BUFFER);
+        SPRINTF(CMD_BUFFER, "rm %s.bak\0", filePath);
+        system(CMD_BUFFER);
+    }
+    fclose(stdout);
+    fclose(stderr);
 }

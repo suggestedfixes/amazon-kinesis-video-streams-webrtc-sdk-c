@@ -43,6 +43,7 @@ extern "C" {
 #define APP_PREGEN_CERTS TRUE
 #define APP_GENCERTBITS_OVERRIDE 1024
 #define APP_LOG_PATH "/tmp/webrtc.log"
+#define APP_MONITOR_LOG_PATH "/tmp/webrtc_monitor.log"
 
 #define APP_PEER_ID_LENGTH 10
 
@@ -64,6 +65,7 @@ typedef struct {
     volatile ATOMIC_BOOL updatingSampleStreamingSessionList;
     volatile ATOMIC_BOOL recreateSignalingClient;
     volatile ATOMIC_BOOL answerReceived;
+    volatile ATOMIC_BOOL frameReceived;
     volatile SIZE_T streamingSessionListReadingThreadCount;
     ChannelInfo channelInfo;
     PCHAR pCaCertPath;
@@ -146,6 +148,7 @@ STATUS sessionCleanupWait(PSampleConfiguration);
 STATUS awaitGetIceConfigInfoCount(SIGNALING_CLIENT_HANDLE, PUINT32);
 STATUS genCerts(PSampleConfiguration pConfig);
 VOID genRandomId();
+VOID std2fileLogger(PVOID);
 
 #ifdef __cplusplus
 }
