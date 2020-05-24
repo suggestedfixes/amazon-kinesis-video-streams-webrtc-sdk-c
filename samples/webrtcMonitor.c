@@ -203,16 +203,27 @@ int main(int argc, char** argv)
     signal(SIGINT, sigintHandler);
     system(argv[2]);
     for (;;) {
-        THREAD_SLEEP(APP_WEBRTC_CHECK_PERIOD * HUNDREDS_OF_NANOS_IN_A_SECOND);
-        BOOL status = FALSE;
-        int retries_left = APP_RETRY_COUNT;
+        int pid = fork();
+        if (pid == 0) {
+            prctl(PR_SET_PDEATHSIG, SIGKILL);
+            prctl(PR_SET_NAME, "webrtc_monitor_worker");
+            for (;;) {
+                THREAD_SLEEP(APP_WEBRTC_CHECK_PERIOD * HUNDREDS_OF_NANOS_IN_A_SECOND);
+                BOOL status = FALSE;
+                int retries_left = APP_RETRY_COUNT;
 
-        do {
-            status = checkWebrtcStatus(argc, argv);
-        } while (retries_left-- > 0 && !status);
+                do {
+                    status = checkWebrtcStatus(argc, argv);
+                } while (retries_left-- > 0 && !status);
 
-        if (!status) {
-            system(argv[2]);
+                if (!status) {
+                    system(argv[2]);
+                }
+            }
+            exit(0);
+        } else {
+            while (wait(NULL) > 0)
+                ;
         }
     }
 

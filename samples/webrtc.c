@@ -558,28 +558,6 @@ CleanUp:
     printf("[KVS Gstreamer Master] Cleanup done\n");
 }
 
-char CMD_BUFFER[256];
-void logger()
-{
-    // 5000 lines is about 5MB
-    int LINE_COUNT_LIMIT = 5000;
-    freopen(APP_LOG_PATH, "a+", stdout);
-    freopen(APP_LOG_PATH, "a+", stderr);
-    for (;;) {
-        THREAD_SLEEP(10 * HUNDREDS_OF_NANOS_IN_A_SECOND);
-        fflush(stdout);
-        fflush(stderr);
-        SPRINTF(CMD_BUFFER, "cat %s | tail -n%d > %s.bak\0", APP_LOG_PATH, LINE_COUNT_LIMIT, APP_LOG_PATH);
-        system(CMD_BUFFER);
-        SPRINTF(CMD_BUFFER, "cat %s.bak > %s\0", APP_LOG_PATH, APP_LOG_PATH);
-        system(CMD_BUFFER);
-        SPRINTF(CMD_BUFFER, "rm %s.bak\0", APP_LOG_PATH);
-        system(CMD_BUFFER);
-    }
-    fclose(stdout);
-    fclose(stderr);
-}
-
 int main(int argc, char** argv)
 {
     if (argc < 2) {
@@ -587,23 +565,30 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    TID trampolineId;
     TID logId;
-
     signal(SIGINT, sigintHandler);
 
-    if (argc >= 3) {
-        if (strcmp(argv[2], "nolog") != 0) {
-            THREAD_CREATE(&logId, std2fileLogger, APP_LOG_PATH);
-        }
-    } else {
-        THREAD_CREATE(&logId, std2fileLogger, APP_LOG_PATH);
-    }
-
     for (;;) {
-        THREAD_CREATE(&trampolineId, trampoline, (PVOID)argv);
-        THREAD_JOIN(trampolineId, NULL);
-        THREAD_SLEEP(HUNDREDS_OF_NANOS_IN_A_SECOND);
+        int pid = fork();
+        // if child process, do webrtc tasks
+        if (pid == 0) {
+            prctl(PR_SET_PDEATHSIG, SIGKILL);
+            prctl(PR_SET_NAME, "webrtc_worker");
+
+            if (argc >= 3) {
+                if (strcmp(argv[2], "nolog") != 0) {
+                    THREAD_CREATE(&logId, std2fileLogger, APP_LOG_PATH);
+                }
+            } else {
+                THREAD_CREATE(&logId, std2fileLogger, APP_LOG_PATH);
+            }
+
+            trampoline(argv);
+            exit(0);
+        } else {
+            while (wait(NULL) > 0)
+                ;
+        }
     }
 
     return 0;
