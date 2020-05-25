@@ -47,6 +47,8 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 
 #define mediumNameMaxLen 30
 
+using namespace live;
+
 class Medium {
 public:
   static Boolean lookupByName(UsageEnvironment& env,

@@ -38,6 +38,8 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 // to allow for IPv6.
 typedef u_int32_t netAddressBits;
 
+using namespace live;
+
 class NetAddress {
 public:
   NetAddress(u_int8_t const* data,

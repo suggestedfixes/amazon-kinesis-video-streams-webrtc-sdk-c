@@ -24,6 +24,8 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #include "Boolean.hh"
 #endif
 
+namespace live {
+
 class HashTable {
 public:
   virtual ~HashTable();
@@ -72,5 +74,7 @@ protected:
 // Tcl's hash table implementation
 int const STRING_HASH_KEYS = 0;
 int const ONE_WORD_HASH_KEYS = 1;
+
+} // namespace live
 
 #endif

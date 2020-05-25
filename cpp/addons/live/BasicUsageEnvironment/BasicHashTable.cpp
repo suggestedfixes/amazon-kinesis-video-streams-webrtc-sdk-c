@@ -31,6 +31,8 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 // the table to increase the number of buckets
 #define REBUILD_MULTIPLIER 3
 
+using namespace live;
+
 BasicHashTable::BasicHashTable(int keyType)
   : fBuckets(fStaticBuckets), fNumBuckets(SMALL_HASH_TABLE_SIZE),
     fNumEntries(0), fRebuildSize(SMALL_HASH_TABLE_SIZE*REBUILD_MULTIPLIER),

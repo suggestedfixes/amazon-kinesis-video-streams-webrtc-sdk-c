@@ -31,6 +31,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 // implementation used in Tcl 7.6: <http://www.tcl.tk/>
 
 #define SMALL_HASH_TABLE_SIZE 4
+using namespace live;
 
 class BasicHashTable: public HashTable {
 private:

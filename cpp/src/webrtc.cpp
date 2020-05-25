@@ -75,16 +75,8 @@ int main(int argc, char** argv)
     TaskScheduler* scheduler = BasicTaskScheduler::createNew();
     UsageEnvironment* env = BasicUsageEnvironment::createNew(*scheduler);
 
-    // We need at least one "rtsp://" URL argument:
-    if (argc < 2) {
-        usage(*env, argv[0]);
-        return 1;
-    }
-
-    // There are argc-1 URLs: argv[1] through argv[argc-1].  Open and start streaming each one:
-    for (int i = 1; i <= argc - 1; ++i) {
-        openURL(*env, argv[0], argv[i]);
-    }
+    openURL(*env, argv[0], "rtsp://admin:Vigil123@127.0.0.1:554/channel1");
+    openURL(*env, argv[0], "rtsp://admin:Vigil123@127.0.0.1:554/channel2");
 
     env->taskScheduler().doEventLoop(&eventLoopWatchVariable);
 
