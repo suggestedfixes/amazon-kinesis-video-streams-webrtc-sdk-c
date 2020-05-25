@@ -28,6 +28,8 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #include "DigestAuthentication.hh"
 #endif
 
+using namespace live;
+
 class RTSPServer: public GenericMediaServer {
 public:
   static RTSPServer* createNew(UsageEnvironment& env, Port ourPort = 554,
@@ -290,11 +292,11 @@ private:
   friend class DeregisterRequestRecord;
   int fHTTPServerSocket; // for optional RTSP-over-HTTP tunneling
   Port fHTTPServerPort; // ditto
-  HashTable* fClientConnectionsForHTTPTunneling; // maps client-supplied 'session cookie' strings to "RTSPClientConnection"s
+  live::HashTable* fClientConnectionsForHTTPTunneling; // maps client-supplied 'session cookie' strings to "RTSPClientConnection"s
     // (used only for optional RTSP-over-HTTP tunneling)
-  HashTable* fTCPStreamingDatabase;
+  live::HashTable* fTCPStreamingDatabase;
     // maps TCP socket numbers to ids of sessions that are streaming over it (RTP/RTCP-over-TCP)
-  HashTable* fPendingRegisterOrDeregisterRequests;
+  live::HashTable* fPendingRegisterOrDeregisterRequests;
   unsigned fRegisterOrDeregisterRequestCounter;
   UserAuthenticationDatabase* fAuthDB;
   Boolean fAllowStreamingRTPOverTCP; // by default, True

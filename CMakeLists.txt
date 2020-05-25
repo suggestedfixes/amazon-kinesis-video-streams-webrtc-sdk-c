@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake;${CMAKE_MODULE_PATH}")
 include(Utilities)
-project(KinesisVideoWebRTCClient LANGUAGES C)
+project(KinesisVideoWebRTCClient LANGUAGES C CXX)
 
 # User Flags
 option(ADD_MUCLIBC "Add -muclibc c flag" OFF)
@@ -85,11 +85,11 @@ if(BUILD_DEPENDENCIES)
 
   set(BUILD_ARGS -DBUILD_STATIC_LIBS=${BUILD_STATIC_LIBS}
                  -DOPENSSL_DIR=${OPEN_SRC_INSTALL_PREFIX})
+
   build_dependency(websockets ${BUILD_ARGS})
 
   set(BUILD_ARGS
       -DBUILD_STATIC_LIBS=${BUILD_STATIC_LIBS}
-      -DOPENSSL_DIR=${OPEN_SRC_INSTALL_PREFIX}
       -DBUILD_LIBSRTP_HOST_PLATFORM=${BUILD_LIBSRTP_HOST_PLATFORM}
       -DBUILD_LIBSRTP_DESTINATION_PLATFORM=${BUILD_LIBSRTP_DESTINATION_PLATFORM}
   )
@@ -110,6 +110,7 @@ endif()
 find_package(Threads)
 find_package(PkgConfig REQUIRED)
 find_package(OpenSSL REQUIRED)
+
 
 pkg_check_modules(LIBWEBSOCKET REQUIRED libwebsockets)
 pkg_check_modules(LIBSRTP REQUIRED libsrtp2)
@@ -288,7 +289,7 @@ if(GST_FOUND)
   )
   target_link_libraries(webrtc kvsWebrtcClient
                         kvsWebrtcSignalingClient ${GST_SAMPLE_LIBRARIES})
- 
+
   add_executable(
     webrtcMonitor
     ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/webrtcUtils.c
@@ -302,3 +303,91 @@ if(BUILD_TEST)
   set(ENV{KVS_GTEST_ROOT} ${KINESIS_VIDEO_OPEN_SOURCE_SRC})
   add_subdirectory(tst)
 endif()
+
+set(CHIPSET_NAME "s3l")
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR ARM)
+
+if (${CHIPSET_NAME} STREQUAL s3l)
+  set(TOOLS               /usr/local/linaro-armv7ahf-2015.11-gcc5.2)
+  set(CMAKE_C_COMPILER    ${TOOLS}/bin/arm-linux-gnueabihf-gcc)
+  set(CMAKE_CXX_COMPILER  ${TOOLS}/bin/arm-linux-gnueabihf-g++)
+  set(CMAKE_STRIP         ${TOOLS}/bin/arm-linux-gnueabihf-strip)
+  set(CMAKE_AR 		 ${TOOLS}/bin/arm-linux-gnueabihf-ar)
+  set(CMAKE_RANLIB	 ${TOOLS}/bin/arm-linux-gnueabihf-ranlib)
+  set(CMAKE_LD		 ${TOOLS}/bin/arm-linux-gnueabihf-gnu-ld)
+  include_directories(${TOOLS}/include)
+endif(${CHIPSET_NAME} STREQUAL s3l )
+
+if(${CHIPSET_NAME} STREQUAL s5l)
+  set(TOOLS               /usr/local/linaro-aarch64-2017.08-gcc7.1)
+  set(CMAKE_C_COMPILER    ${TOOLS}/bin/aarch64-linux-gnu-gcc)
+  set(CMAKE_CXX_COMPILER  ${TOOLS}/bin/aarch64-linux-gnu-g++)
+  set(CMAKE_STRIP         ${TOOLS}/bin/aarch64-linux-gnu-strip)
+  set(CMAKE_AR 		 ${TOOLS}/bin/aarch64-linux-gnu-ar)
+  set(CMAKE_RANLIB	 ${TOOLS}/bin/aarch64-linux-gnu-ranlib)
+  set(CMAKE_LD		 ${TOOLS}/bin/aarch64-linux-gnu-ld)
+endif(${CHIPSET_NAME} STREQUAL s5l)
+
+add_definitions(-O3 -g -fdata-sections -ffunction-sections)
+add_definitions(-march=armv7 -DSOCKLEN_T=socklen_t -DNO_SSTREAM=1 -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64)
+
+set(CPP_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
+set(LIVE555_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cpp/addons/live)
+
+include_directories(${LIVE555_PATH}/src)
+include_directories(${LIVE555_PATH}/include)
+include_directories(${LIVE555_PATH}/liveMedia/include)
+include_directories(${LIVE555_PATH}/groupsock/include)
+include_directories(${LIVE555_PATH}/UsageEnvironment/include)
+include_directories(${LIVE555_PATH}/BasicUsageEnvironment/include)
+include_directories(${LIVE555_PATH}/testProgs/include)
+
+link_directories(${LIVE555_PATH}/liveMedia)
+link_directories(${LIVE555_PATH}/groupsock)
+link_directories(${LIVE555_PATH}/UsageEnvironment)
+link_directories(${LIVE555_PATH}/BasicUsageEnvironment)
+link_directories(${LIVE555_PATH}/testProgs)
+
+file(
+    GLOB
+    LIVE_MEDIA_HEADERS
+    "${LIVE555_PATH}/liveMedia/include/*.h"
+    "${LIVE555_PATH}/liveMedia/include/*.hh"
+    "${LIVE555_PATH}/groupsock/include/*.h"
+    "${LIVE555_PATH}/groupsock/include/*.hh"
+    "${LIVE555_PATH}/UsageEnvironment/include/*.hh"
+    "${LIVE555_PATH}/BasicUsageEnvironment/include/*.hh"
+)
+
+file(
+    GLOB
+    LIVE_MEDIA_SRC
+    "${LIVE555_PATH}/liveMedia/*.c"
+    "${LIVE555_PATH}/liveMedia/*.cpp"
+    "${LIVE555_PATH}/groupsock/*.c"
+    "${LIVE555_PATH}/groupsock/*.cpp"
+    "${LIVE555_PATH}/BasicUsageEnvironment/*.cpp"
+    "${LIVE555_PATH}/UsageEnvironment/*.cpp"
+)
+
+add_library(liveMedia STATIC ${LIVE_MEDIA_HEADERS} ${LIVE_MEDIA_SRC})
+
+include_directories(${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples)
+
+add_executable(
+    webrtc_cpp
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/webrtc.h
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/webrtcUtils.c
+    ${CPP_PATH}/src/webrtc.cpp
+    ${CPP_PATH}/src/MemorySink.cpp
+    ${CPP_PATH}/src/WebRTCRTSPClient.cpp
+    ${CPP_PATH}/src/StreamClientState.cpp
+)
+
+target_link_libraries(
+    webrtc_cpp
+    liveMedia
+    kvsWebrtcClient 
+    kvsWebrtcSignalingClient
+)

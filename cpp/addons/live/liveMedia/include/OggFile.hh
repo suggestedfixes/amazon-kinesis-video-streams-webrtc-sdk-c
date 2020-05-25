@@ -28,6 +28,8 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #include "HashTable.hh"
 #endif
 
+using namespace live;
+
 class OggTrack; // forward
 class OggDemux; // forward
 
@@ -83,7 +85,7 @@ private:
   void* fOnCreationClientData;
 
   class OggTrackTable* fTrackTable;
-  HashTable* fDemuxesTable;
+  live::HashTable* fDemuxesTable;
   class OggFileParser* fParserForInitialization;
 };
 
@@ -134,7 +136,7 @@ public:
   OggTrack* next();
 
 private:
-  HashTable::Iterator* fIter;
+  live::HashTable::Iterator* fIter;
 };
 
 class OggDemux: public Medium {
@@ -170,7 +172,7 @@ private:
 private:
   OggFile& fOurFile;
   class OggFileParser* fOurParser;
-  HashTable* fDemuxedTracksTable;
+  live::HashTable* fDemuxedTracksTable;
   OggTrackTableIterator* fIter;
 };
 

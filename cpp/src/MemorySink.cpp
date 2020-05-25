@@ -1,5 +1,6 @@
 #include "MemorySink.h"
 #include "liveMedia.hh"
+#include "webrtc.h"
 
 #define MEMORY_SINK_RECEIVE_BUFFER_SIZE (10 * 1024 * 1024)
 
@@ -36,6 +37,13 @@ void MemorySink::afterGettingFrame(void* clientData, unsigned frameSize, unsigne
 void MemorySink::afterGettingFrame(unsigned frameSize, unsigned numTruncatedBytes,
     struct timeval presentationTime, unsigned /*durationInMicroseconds*/)
 {
+
+    Frame frame;
+    frame.trackId = DEFAULT_VIDEO_TRACK_ID;
+    frame.version = FRAME_CURRENT_VERSION;
+    frame.size = frameSize;
+    frame.frameData = fReceiveBuffer; 
+
 // We've just received a frame of data.  (Optionally) print out information about it:
 #ifdef DEBUG_PRINT_EACH_RECEIVED_FRAME
     if (fStreamId != NULL)

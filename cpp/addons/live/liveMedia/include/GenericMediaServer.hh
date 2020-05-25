@@ -148,7 +148,7 @@ protected:
     virtual ~ServerMediaSessionIterator();
     ServerMediaSession* next();
   private:
-    HashTable::Iterator* fOurIterator;
+    live::HashTable::Iterator* fOurIterator;
   };
 
 protected:
@@ -160,9 +160,9 @@ protected:
   unsigned fReclamationSeconds;
 
 private:
-  HashTable* fServerMediaSessions; // maps 'stream name' strings to "ServerMediaSession" objects
-  HashTable* fClientConnections; // the "ClientConnection" objects that we're using
-  HashTable* fClientSessions; // maps 'session id' strings to "ClientSession" objects
+  live::HashTable* fServerMediaSessions; // maps 'stream name' strings to "ServerMediaSession" objects
+  live::HashTable* fClientConnections; // the "ClientConnection" objects that we're using
+  live::HashTable* fClientSessions; // maps 'session id' strings to "ClientSession" objects
   u_int32_t fPreviousClientSessionId;
 };
 
@@ -187,7 +187,7 @@ public:
   Boolean passwordsAreMD5() { return fPasswordsAreMD5; }
 
 protected:
-  HashTable* fTable;
+  live::HashTable* fTable;
   char* fRealm;
   Boolean fPasswordsAreMD5;
 };

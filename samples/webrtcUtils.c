@@ -1,7 +1,6 @@
 #define LOG_CLASS "WebRTC"
 #include "webrtc.h"
 
-char app_peer_id_charset[30] = "abcdefghijklmnopqrstuvwxyz012\0";
 PSampleConfiguration gSampleConfiguration = NULL;
 
 VOID sigintHandler(INT32 sigNum)
@@ -223,6 +222,7 @@ STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSe
 {
     STATUS retStatus = STATUS_SUCCESS;
     RtcSessionDescriptionInit offerSessionDescriptionInit;
+    BOOL locked = FALSE;
 
     CHK(pSampleConfiguration != NULL && pSignalingMessage != NULL, STATUS_NULL_ARG);
 
@@ -233,12 +233,20 @@ STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSe
     CHK_STATUS(setRemoteDescription(pSampleStreamingSession->pPeerConnection, &offerSessionDescriptionInit));
     CHK_STATUS(createAnswer(pSampleStreamingSession->pPeerConnection, &pSampleStreamingSession->answerSessionDescriptionInit));
     CHK_STATUS(setLocalDescription(pSampleStreamingSession->pPeerConnection, &pSampleStreamingSession->answerSessionDescriptionInit));
-
     if (!pSampleConfiguration->trickleIce) {
+        MUTEX_LOCK(pSampleConfiguration->sampleConfigurationObjLock);
+        locked = TRUE;
+
         while (!ATOMIC_LOAD_BOOL(&pSampleStreamingSession->candidateGatheringDone)) {
-            CHK_WARN(!ATOMIC_LOAD_BOOL(&pSampleStreamingSession->terminateFlag), STATUS_INTERNAL_ERROR, "application terminated and candidate gathering still not done");
-            CVAR_WAIT(pSampleConfiguration->cvar, pSampleConfiguration->sampleConfigurationObjLock, INFINITE_TIME_VALUE);
+            CHK_WARN(!ATOMIC_LOAD_BOOL(&pSampleStreamingSession->terminateFlag), STATUS_OPERATION_TIMED_OUT,
+                     "application terminated and candidate gathering still not done");
+            CVAR_WAIT(pSampleConfiguration->cvar, pSampleConfiguration->sampleConfigurationObjLock, 5 * HUNDREDS_OF_NANOS_IN_A_SECOND);
+
         }
+
+        MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
+        locked = FALSE;
+
 
         DLOGD("Candidate collection done for non trickle ice");
         // get the latest local description once candidate gathering is done
@@ -271,6 +279,11 @@ STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSe
 CleanUp:
 
     CHK_LOG_ERR(retStatus);
+
+    if (locked) {
+        MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
+    }
+
 
     return retStatus;
 }
@@ -332,6 +345,7 @@ STATUS initializePeerConnection(PSampleConfiguration pSampleConfiguration, PRtcP
     RtcConfiguration configuration;
     UINT32 i, j, iceConfigCount, uriCount;
     PIceConfigInfo pIceConfigInfo;
+    const UINT32 maxTurnServer = 1;
 
     CHK(pSampleConfiguration != NULL && ppRtcPeerConnection != NULL, STATUS_NULL_ARG);
 
@@ -353,7 +367,7 @@ STATUS initializePeerConnection(PSampleConfiguration pSampleConfiguration, PRtcP
         // Set the URIs from the configuration
         CHK_STATUS(awaitGetIceConfigInfoCount(pSampleConfiguration->signalingClientHandle, &iceConfigCount));
 
-        for (uriCount = 0, i = 0; i < iceConfigCount; i++) {
+        for (uriCount = 0, i = 0; i < maxTurnServer; i++) {
             CHK_STATUS(signalingClientGetIceConfigInfo(pSampleConfiguration->signalingClientHandle, i, &pIceConfigInfo));
             for (j = 0; j < pIceConfigInfo->uriCount; j++) {
                 CHECK(uriCount < MAX_ICE_SERVERS_COUNT);
@@ -679,7 +693,6 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
     ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, FALSE);
     ATOMIC_STORE_BOOL(&pSampleConfiguration->appTerminateFlag, FALSE);
     ATOMIC_STORE_BOOL(&pSampleConfiguration->updatingSampleStreamingSessionList, FALSE);
-
     ATOMIC_STORE_BOOL(&pSampleConfiguration->recreateSignalingClient, FALSE);
 
 CleanUp:
@@ -833,10 +846,12 @@ CleanUp:
 
 VOID genRandomId()
 {
+    /*
     for (int i = 0; i < APP_PEER_ID_LENGTH; i++) {
         name_buffer[i] = app_peer_id_charset[(random() % 29) & 0x1f];
     }
     name_buffer[APP_PEER_ID_LENGTH] = 0;
+    */
 }
 
 VOID std2fileLogger(PVOID args)

@@ -33,6 +33,8 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #include "RTCP.hh"
 #endif
 
+using namespace live;
+
 class PassiveServerMediaSubsession: public ServerMediaSubsession {
 public:
   static PassiveServerMediaSubsession* createNew(RTPSink& rtpSink,
@@ -76,7 +78,7 @@ protected:
   char* fSDPLines;
   RTPSink& fRTPSink;
   RTCPInstance* fRTCPInstance;
-  HashTable* fClientRTCPSourceRecords; // indexed by client session id; used to implement RTCP "RR" handling
+  live::HashTable* fClientRTCPSourceRecords; // indexed by client session id; used to implement RTCP "RR" handling
 };
 
 #endif

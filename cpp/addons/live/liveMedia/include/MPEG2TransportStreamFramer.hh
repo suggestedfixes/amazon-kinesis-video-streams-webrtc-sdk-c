@@ -67,7 +67,7 @@ private:
 private:
   u_int64_t fTSPacketCount;
   double fTSPacketDurationEstimate;
-  HashTable* fPIDStatusTable;
+  live::HashTable* fPIDStatusTable;
   u_int64_t fTSPCRCount;
   Boolean fLimitNumTSPacketsToStream;
   unsigned long fNumTSPacketsToStream; // used iff "fLimitNumTSPacketsToStream" is True

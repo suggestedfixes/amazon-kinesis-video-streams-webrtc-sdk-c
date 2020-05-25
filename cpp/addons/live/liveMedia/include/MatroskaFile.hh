@@ -31,6 +31,8 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #include "HashTable.hh"
 #endif
 
+using namespace live;
+
 class MatroskaTrack; // forward
 class MatroskaDemux; // forward
 
@@ -122,7 +124,7 @@ private:
   u_int64_t fSegmentDataOffset, fClusterOffset, fCuesOffset;
 
   class MatroskaTrackTable* fTrackTable;
-  HashTable* fDemuxesTable;
+  live::HashTable* fDemuxesTable;
   class CuePoint* fCuePoints;
   unsigned fChosenVideoTrackNumber, fChosenAudioTrackNumber, fChosenSubtitleTrackNumber;
   class MatroskaFileParser* fParserForInitialization;
@@ -203,7 +205,7 @@ private:
 private:
   MatroskaFile& fOurFile;
   class MatroskaFileParser* fOurParser;
-  HashTable* fDemuxedTracksTable;
+  live::HashTable* fDemuxedTracksTable;
 
   // Used to implement "newServerMediaSubsession()":
   u_int8_t fNextTrackTypeToCheck;

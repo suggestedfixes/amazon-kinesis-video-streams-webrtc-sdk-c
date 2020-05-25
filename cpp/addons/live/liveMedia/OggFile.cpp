@@ -28,6 +28,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 ////////// OggTrackTable definition /////////
 
 // For looking up and iterating over the file's tracks:
+using namespace live;
 
 class OggTrackTable {
 public:

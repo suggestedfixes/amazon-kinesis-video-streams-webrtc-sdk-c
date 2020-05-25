@@ -35,6 +35,8 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #include "RTCP.hh"
 #endif
 
+using namespace live;
+
 class OnDemandServerMediaSubsession: public ServerMediaSubsession {
 protected: // we're a virtual base class
   OnDemandServerMediaSubsession(UsageEnvironment& env, Boolean reuseFirstSource,
@@ -132,7 +134,7 @@ protected:
 
 protected:
   char* fSDPLines;
-  HashTable* fDestinationsHashTable; // indexed by client session id
+  live::HashTable* fDestinationsHashTable; // indexed by client session id
 
 private:
   Boolean fReuseFirstSource;

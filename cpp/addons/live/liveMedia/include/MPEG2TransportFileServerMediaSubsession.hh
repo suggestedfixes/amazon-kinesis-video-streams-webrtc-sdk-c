@@ -38,6 +38,8 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #include "MPEG2TransportStreamFromESSource.hh"
 #endif
 
+using namespace live;
+
 class ClientTrickPlayState; // forward
 
 class MPEG2TransportFileServerMediaSubsession: public FileServerMediaSubsession {
@@ -90,7 +92,7 @@ private:
 private:
   MPEG2TransportStreamIndexFile* fIndexFile;
   float fDuration;
-  HashTable* fClientSessionHashTable; // indexed by client session id
+  live::HashTable* fClientSessionHashTable; // indexed by client session id
 };
 
 

@@ -25,8 +25,9 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #include "MemorySink.h"
 #include "StreamClientState.h"
 #include "WebRTCRTSPClient.h"
+#include "webrtc.h"
 
-// Forward function definitions:
+extern PSampleConfiguration gSampleConfiguration;
 
 // RTSP 'response handlers':
 void continueAfterDESCRIBE(RTSPClient* rtspClient, int resultCode, char* resultString);
@@ -69,18 +70,97 @@ void usage(UsageEnvironment& env, char const* progName)
 
 char eventLoopWatchVariable = 0;
 
-int main(int argc, char** argv)
-{
-    // Begin by setting up our usage environment:
+PVOID streamVideo(PVOID args) {
+    STATUS retStatus = STATUS_SUCCESS;
     TaskScheduler* scheduler = BasicTaskScheduler::createNew();
     UsageEnvironment* env = BasicUsageEnvironment::createNew(*scheduler);
-
-    openURL(*env, argv[0], "rtsp://admin:Vigil123@127.0.0.1:554/channel1");
-    openURL(*env, argv[0], "rtsp://admin:Vigil123@127.0.0.1:554/channel2");
-
+    openURL(*env, "webrtc", "rtsp://admin:Vigil123@127.0.0.1:554/channel1");
+    openURL(*env, "webrtc", "rtsp://admin:Vigil123@127.0.0.1:554/channel2");
     env->taskScheduler().doEventLoop(&eventLoopWatchVariable);
+    return (PVOID)(ULONG_PTR)retStatus;
+}
 
-    return 0;
+int webrtc_server(char** argv) {
+    STATUS retStatus = STATUS_SUCCESS;
+    SignalingClientCallbacks signalingClientCallbacks;
+    SignalingClientInfo clientInfo;
+    PSampleConfiguration pSampleConfiguration = NULL;
+
+    CHK_STATUS(createSampleConfiguration(argv[1],
+        SIGNALING_CHANNEL_ROLE_TYPE_MASTER,
+        APP_TRICKLE_ICE, APP_TURN,
+        &pSampleConfiguration));
+    printf("[KVS GStreamer Master] Created signaling channel %s\n", argv[1]);
+
+    pSampleConfiguration->videoSource = streamVideo;
+    pSampleConfiguration->mediaType = SAMPLE_STREAMING_VIDEO_ONLY;
+    pSampleConfiguration->onDataChannel = onDataChannel;
+    pSampleConfiguration->customData = (UINT64)pSampleConfiguration;
+
+    CHK_STATUS(initKvsWebRtc());
+    printf("[KVS GStreamer Master] KVS WebRTC initialization completed "
+           "successfully\n");
+
+    if (APP_PREGEN_CERTS) {
+        CHK_STATUS(genCerts(pSampleConfiguration));
+    }
+
+    CHK_STATUS(createSignalingClientSync(
+        &pSampleConfiguration->clientInfo,
+        &pSampleConfiguration->channelInfo,
+        &pSampleConfiguration->signalingClientCallbacks,
+        pSampleConfiguration->pCredentialProvider,
+        &pSampleConfiguration->signalingClientHandle));
+
+    printf("[KVS GStreamer Master] Signaling client created successfully\n");
+
+    // Enable the processing of the messages
+    CHK_STATUS(signalingClientConnectSync(pSampleConfiguration->signalingClientHandle));
+
+    printf("[KVS GStreamer Master] Signaling client connection to socket "
+           "established\n");
+
+    printf("[KVS Gstreamer Master] Beginning streaming...check the stream over "
+           "channel %s\n",
+        argv[1]);
+
+    gSampleConfiguration = pSampleConfiguration;
+
+    // Checking for termination
+    CHK_STATUS(sessionCleanupWait(pSampleConfiguration));
+
+    printf("[KVS GStreamer Master] Streaming session terminated\n");
+
+CleanUp:
+
+    printf("[KVS GStreamer Master] Cleaning up....\n");
+    CHK_LOG_ERR(retStatus);
+
+    if (pSampleConfiguration != NULL) {
+        // Kick of the termination sequence
+        ATOMIC_STORE_BOOL(&pSampleConfiguration->appTerminateFlag, TRUE);
+
+        if (IS_VALID_TID_VALUE(pSampleConfiguration->videoSenderTid)) {
+            // Join the threads
+            THREAD_JOIN(pSampleConfiguration->videoSenderTid, NULL);
+        }
+
+        CHK_LOG_ERR(
+            freeSignalingClient(&pSampleConfiguration->signalingClientHandle));
+        CHK_LOG_ERR(freeSampleConfiguration(&pSampleConfiguration));
+    }
+    printf("[KVS Gstreamer Master] Cleanup done\n");
+    return retStatus;
+}
+
+int trampoline(char** argv) {
+    return webrtc_server(argv);
+}
+
+int main(int argc, char** argv)
+{
+    trampoline(argv);
+    return 0; 
 }
 
 #define RTSP_CLIENT_VERBOSITY_LEVEL 1 // by default, print verbose output from each "RTSPClient"
@@ -364,3 +444,5 @@ void shutdownStream(RTSPClient* rtspClient, int exitCode)
         exit(exitCode);
     }
 }
+
+
