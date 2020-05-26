@@ -68,6 +68,11 @@ void usage(UsageEnvironment& env, char const* progName)
     env << "\t(where each <rtsp-url-i> is a \"rtsp://\" URL)\n";
 }
 
+PVOID receiveMedia(PVOID args)
+{
+    return (PVOID)(ULONG_PTR)STATUS_SUCCESS;
+}
+
 char eventLoopWatchVariable = 0;
 
 PVOID streamVideo(PVOID args) {
@@ -95,6 +100,7 @@ int webrtc_server(char** argv) {
     pSampleConfiguration->videoSource = streamVideo;
     pSampleConfiguration->mediaType = SAMPLE_STREAMING_VIDEO_ONLY;
     pSampleConfiguration->onDataChannel = onDataChannel;
+    pSampleConfiguration->receiveAudioVideoSource = receiveMedia;
     pSampleConfiguration->customData = (UINT64)pSampleConfiguration;
 
     CHK_STATUS(initKvsWebRtc());
@@ -145,8 +151,7 @@ CleanUp:
             THREAD_JOIN(pSampleConfiguration->videoSenderTid, NULL);
         }
 
-        CHK_LOG_ERR(
-            freeSignalingClient(&pSampleConfiguration->signalingClientHandle));
+        CHK_LOG_ERR(freeSignalingClient(&pSampleConfiguration->signalingClientHandle));
         CHK_LOG_ERR(freeSampleConfiguration(&pSampleConfiguration));
     }
     printf("[KVS Gstreamer Master] Cleanup done\n");

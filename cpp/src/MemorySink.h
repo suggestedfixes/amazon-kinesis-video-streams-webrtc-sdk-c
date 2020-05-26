@@ -3,6 +3,7 @@
 
 #include "MediaSink.hh"
 #include "MediaSession.hh"
+#include "webrtc.h"
 
 class MemorySink : public MediaSink {
 public:
@@ -28,8 +29,10 @@ private:
 
 private:
     u_int8_t* fReceiveBuffer;
+    u_int8_t* h264Buffer;
     MediaSubsession& fSubsession;
     char* fStreamId;
+    Frame frame;
 };
 
 #endif

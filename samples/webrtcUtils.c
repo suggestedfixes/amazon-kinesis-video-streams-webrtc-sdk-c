@@ -468,7 +468,7 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
         NULL,
         &pSampleStreamingSession->pVideoRtcRtpTransceiver));
 
-    // Add a SendRecv Transceiver of type video
+    // Add a SendRecv Transceiver of type audio
     audioTrack.kind = MEDIA_STREAM_TRACK_KIND_AUDIO;
     audioTrack.codec = RTC_CODEC_OPUS;
     STRCPY(audioTrack.streamId, "myKvsVideoStream");
