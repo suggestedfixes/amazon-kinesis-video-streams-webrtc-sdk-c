@@ -203,6 +203,38 @@ CleanUp:
     return retStatus;
 }
 
+STATUS changePeerConnectionState(PKvsPeerConnection pKvsPeerConnection, RTC_PEER_CONNECTION_STATE newState)
+{
+    STATUS retStatus = STATUS_SUCCESS;
+    BOOL locked = FALSE;
+    CHK(pKvsPeerConnection != NULL, STATUS_NULL_ARG);
+
+    MUTEX_LOCK(pKvsPeerConnection->peerConnectionObjLock);
+    locked = TRUE;
+
+    /* new and closed state are terminal*/
+    CHK(pKvsPeerConnection->connectionState != newState &&
+        pKvsPeerConnection->connectionState != RTC_PEER_CONNECTION_STATE_FAILED &&
+        pKvsPeerConnection->connectionState != RTC_PEER_CONNECTION_STATE_CLOSED , retStatus);
+
+    pKvsPeerConnection->connectionState = newState;
+    MUTEX_UNLOCK(pKvsPeerConnection->peerConnectionObjLock);
+    locked = FALSE;
+
+    if (pKvsPeerConnection->onConnectionStateChange != NULL) {
+        pKvsPeerConnection->onConnectionStateChange(pKvsPeerConnection->onConnectionStateChangeCustomData, newState);
+    }
+
+CleanUp:
+
+    if (locked) {
+        MUTEX_UNLOCK(pKvsPeerConnection->peerConnectionObjLock);
+    }
+
+    CHK_LOG_ERR(retStatus);
+    return retStatus;
+}
+
 STATUS onFrameReadyFunc(UINT64 customData, UINT16 startIndex, UINT16 endIndex, UINT32 frameSize)
 {
     STATUS retStatus = STATUS_SUCCESS;
@@ -253,14 +285,10 @@ VOID onIceConnectionStateChange(UINT64 customData, UINT64 connectionState)
 {
     STATUS retStatus = STATUS_SUCCESS;
     PKvsPeerConnection pKvsPeerConnection = (PKvsPeerConnection) customData;
-    BOOL locked = FALSE;
     RTC_PEER_CONNECTION_STATE newConnectionState = RTC_PEER_CONNECTION_STATE_NEW;
+    BOOL startDtlsSession = FALSE;
 
     CHK(pKvsPeerConnection != NULL, STATUS_NULL_ARG);
-    CHK(pKvsPeerConnection->onConnectionStateChange != NULL, retStatus);
-
-    MUTEX_LOCK(pKvsPeerConnection->peerConnectionObjLock);
-    locked = TRUE;
 
     switch (connectionState) {
         case ICE_AGENT_STATE_NEW:
@@ -277,7 +305,7 @@ VOID onIceConnectionStateChange(UINT64 customData, UINT64 connectionState)
             /* explicit fall-through */
         case ICE_AGENT_STATE_READY:
             /* start dtlsSession as soon as ice is connected */
-            CHK_STATUS(dtlsSessionStart(pKvsPeerConnection->pDtlsSession, pKvsPeerConnection->dtlsIsServer));
+            startDtlsSession = TRUE;
             newConnectionState = RTC_PEER_CONNECTION_STATE_CONNECTED;
             break;
 
@@ -294,17 +322,13 @@ VOID onIceConnectionStateChange(UINT64 customData, UINT64 connectionState)
             break;
     }
 
-    if (newConnectionState != pKvsPeerConnection->previousConnectionState) {
-        pKvsPeerConnection->previousConnectionState = newConnectionState;
-        pKvsPeerConnection->onConnectionStateChange(pKvsPeerConnection->onConnectionStateChangeCustomData,
-                                                    newConnectionState);
+    if (startDtlsSession) {
+        CHK_STATUS(dtlsSessionStart(pKvsPeerConnection->pDtlsSession, pKvsPeerConnection->dtlsIsServer));
     }
+
+    CHK_STATUS(changePeerConnectionState(pKvsPeerConnection, newConnectionState));
 
 CleanUp:
-
-    if (locked) {
-        MUTEX_UNLOCK(pKvsPeerConnection->peerConnectionObjLock);
-    }
 
     CHK_LOG_ERR(retStatus);
 }
@@ -415,6 +439,20 @@ VOID onDtlsOutboundPacket(UINT64 customData, PBYTE pBuffer, UINT32 bufferLen)
     iceAgentSendPacket(pKvsPeerConnection->pIceAgent, pBuffer, bufferLen);
 }
 
+VOID onDtlsStateChange(UINT64 customData, RTC_DTLS_TRANSPORT_STATE newDtlsState)
+{
+    PKvsPeerConnection pKvsPeerConnection = NULL;
+    if (customData == 0) {
+        return;
+    }
+
+    pKvsPeerConnection = (PKvsPeerConnection) customData;
+
+    if (newDtlsState == CLOSED) {
+        changePeerConnectionState(pKvsPeerConnection, RTC_PEER_CONNECTION_STATE_CLOSED);
+    }
+}
+
 /* Generate a printable string that does not
  * need to be escaped when encoding in JSON
  */
@@ -464,12 +502,12 @@ STATUS createPeerConnection(PRtcConfiguration pConfiguration, PRtcPeerConnection
     CHK_STATUS(generateJSONSafeString(pKvsPeerConnection->localIcePwd, LOCAL_ICE_PWD_LEN));
     CHK_STATUS(generateJSONSafeString(pKvsPeerConnection->localCNAME, LOCAL_CNAME_LEN));
 
-    dtlsSessionCallbacks.customData = (UINT64) pKvsPeerConnection;
-    dtlsSessionCallbacks.outboundPacketFn = onDtlsOutboundPacket;
     CHK_STATUS(createDtlsSession(&dtlsSessionCallbacks, pKvsPeerConnection->timerQueueHandle,
             pConfiguration->kvsRtcConfiguration.generatedCertificateBits,
 	    pConfiguration->kvsRtcConfiguration.generateRSACertificate,
             pConfiguration->certificates, &pKvsPeerConnection->pDtlsSession));
+    CHK_STATUS(dtlsSessionOnOutBoundData(pKvsPeerConnection->pDtlsSession, (UINT64) pKvsPeerConnection, onDtlsOutboundPacket));
+    CHK_STATUS(dtlsSessionOnStateChange(pKvsPeerConnection->pDtlsSession, (UINT64) pKvsPeerConnection, onDtlsStateChange));
 
     CHK_STATUS(hashTableCreateWithParams(CODEC_HASH_TABLE_BUCKET_COUNT, CODEC_HASH_TABLE_BUCKET_LENGTH, &pKvsPeerConnection->pCodecTable));
     CHK_STATUS(hashTableCreateWithParams(CODEC_HASH_TABLE_BUCKET_COUNT, CODEC_HASH_TABLE_BUCKET_LENGTH, &pKvsPeerConnection->pDataChannels));
@@ -485,7 +523,7 @@ STATUS createPeerConnection(PRtcConfiguration pConfiguration, PRtcPeerConnection
 
     pKvsPeerConnection->pSrtpSessionLock = MUTEX_CREATE(TRUE);
     pKvsPeerConnection->peerConnectionObjLock = MUTEX_CREATE(FALSE);
-    pKvsPeerConnection->previousConnectionState = RTC_PEER_CONNECTION_STATE_NONE;
+    pKvsPeerConnection->connectionState = RTC_PEER_CONNECTION_STATE_NONE;
     pKvsPeerConnection->MTU = pConfiguration->kvsRtcConfiguration.maximumTransmissionUnit == 0 ? DEFAULT_MTU_SIZE : pConfiguration->kvsRtcConfiguration.maximumTransmissionUnit;
 
     iceAgentCallbacks.customData = (UINT64) pKvsPeerConnection;
@@ -496,6 +534,8 @@ STATUS createPeerConnection(PRtcConfiguration pConfiguration, PRtcPeerConnection
     // IceAgent will own the lifecycle of pConnectionListener;
     CHK_STATUS(createIceAgent(pKvsPeerConnection->localIceUfrag, pKvsPeerConnection->localIcePwd, &iceAgentCallbacks, pConfiguration,
                               pKvsPeerConnection->timerQueueHandle, pConnectionListener, &pKvsPeerConnection->pIceAgent));
+
+    NULLABLE_SET_EMPTY(pKvsPeerConnection->canTrickleIce);
 
     *ppPeerConnection = (PRtcPeerConnection) pKvsPeerConnection;
 
@@ -535,6 +575,8 @@ STATUS freePeerConnection(PRtcPeerConnection *ppPeerConnection)
 
     CHK(pKvsPeerConnection != NULL, retStatus);
 
+    /* Shutdown IceAgent first so there is no more incoming packets which can cause
+     * SCTP to be allocated again after SCTP is freed. */
     CHK_LOG_ERR(iceAgentShutdown(pKvsPeerConnection->pIceAgent));
 
     // free timer queue first to remove liveness provided by timer
@@ -543,10 +585,9 @@ STATUS freePeerConnection(PRtcPeerConnection *ppPeerConnection)
     }
 
     /* Free structs that have their own thread. SCTP has threads created by SCTP library. IceAgent has the
-     * connectionListener thread. Free IceAgent first so there is no more incoming packets which can cause
-     * SCTP to be allocated again after SCTP is freed. */
-    CHK_LOG_ERR(freeIceAgent(&pKvsPeerConnection->pIceAgent));
+     * connectionListener thread. Free SCTP first so it wont try to send anything through ICE. */
     CHK_LOG_ERR(freeSctpSession(&pKvsPeerConnection->pSctpSession));
+    CHK_LOG_ERR(freeIceAgent(&pKvsPeerConnection->pIceAgent));
 
     // free transceivers
     CHK_LOG_ERR(doubleListGetHeadNode(pKvsPeerConnection->pTransceievers, &pCurNode));
@@ -736,6 +777,8 @@ STATUS setRemoteDescription(PRtcPeerConnection pPeerConnection, PRtcSessionDescr
 
     MEMSET(pSessionDescription, 0x00, SIZEOF(SessionDescription));
     pKvsPeerConnection->dtlsIsServer = FALSE;
+    /* Assume cant trickle at first */
+    NULLABLE_SET_VALUE(pKvsPeerConnection->canTrickleIce, FALSE);
 
     CHK_STATUS(serializeSessionDescription(pSessionDescription, pSessionDescriptionInit->sdp));
 
@@ -764,6 +807,9 @@ STATUS setRemoteDescription(PRtcPeerConnection pPeerConnection, PRtcSessionDescr
                 STRNCPY(pKvsPeerConnection->remoteCertificateFingerprint, pSessionDescription->mediaDescriptions[i].sdpAttributes[j].attributeValue + 8, CERTIFICATE_FINGERPRINT_LENGTH);
             } else if (pKvsPeerConnection->isOffer && STRCMP(pSessionDescription->mediaDescriptions[i].sdpAttributes[j].attributeName, "setup") == 0) {
                 pKvsPeerConnection->dtlsIsServer = STRCMP(pSessionDescription->mediaDescriptions[i].sdpAttributes[j].attributeValue, "active") == 0;
+            } else if (STRCMP(pSessionDescription->mediaDescriptions[i].sdpAttributes[j].attributeName, "ice-options") == 0 &&
+                       STRCMP(pSessionDescription->mediaDescriptions[i].sdpAttributes[j].attributeValue, "trickle") == 0) {
+                NULLABLE_SET_VALUE(pKvsPeerConnection->canTrickleIce, TRUE);
             }
         }
     }
@@ -771,12 +817,36 @@ STATUS setRemoteDescription(PRtcPeerConnection pPeerConnection, PRtcSessionDescr
     CHK(remoteIceUfrag != NULL && remoteIcePwd != NULL, STATUS_SESSION_DESCRIPTION_MISSING_ICE_VALUES);
     CHK(pKvsPeerConnection->remoteCertificateFingerprint[0] != '\0', STATUS_SESSION_DESCRIPTION_MISSING_CERTIFICATE_FINGERPRINT);
 
-    CHK_STATUS(iceAgentStartAgent(pKvsPeerConnection->pIceAgent, remoteIceUfrag, remoteIcePwd, pKvsPeerConnection->isOffer));
+    if (!IS_EMPTY_STRING(pKvsPeerConnection->remoteIceUfrag) &&
+        !IS_EMPTY_STRING(pKvsPeerConnection->remoteIcePwd) &&
+        STRNCMP(pKvsPeerConnection->remoteIceUfrag, remoteIceUfrag, LOCAL_ICE_UFRAG_LEN) != 0 &&
+        STRNCMP(pKvsPeerConnection->remoteIcePwd, remoteIcePwd, LOCAL_ICE_PWD_LEN) != 0) {
+
+        CHK_STATUS(generateJSONSafeString(pKvsPeerConnection->localIceUfrag, LOCAL_ICE_UFRAG_LEN));
+        CHK_STATUS(generateJSONSafeString(pKvsPeerConnection->localIcePwd, LOCAL_ICE_PWD_LEN));
+        CHK_STATUS(iceAgentRestart(pKvsPeerConnection->pIceAgent,
+                                   pKvsPeerConnection->localIceUfrag,
+                                   pKvsPeerConnection->localIcePwd));
+        CHK_STATUS(iceAgentStartGathering(pKvsPeerConnection->pIceAgent));
+    }
+
+    STRNCPY(pKvsPeerConnection->remoteIceUfrag, remoteIceUfrag, LOCAL_ICE_UFRAG_LEN);
+    STRNCPY(pKvsPeerConnection->remoteIcePwd, remoteIcePwd, LOCAL_ICE_PWD_LEN);
+
+    CHK_STATUS(iceAgentStartAgent(pKvsPeerConnection->pIceAgent,
+                                  pKvsPeerConnection->remoteIceUfrag,
+                                  pKvsPeerConnection->remoteIcePwd,
+                                  pKvsPeerConnection->isOffer));
+
     if (!pKvsPeerConnection->isOffer) {
         CHK_STATUS(setPayloadTypesFromOffer(pKvsPeerConnection->pCodecTable, pKvsPeerConnection->pRtxTable, pSessionDescription));
     }
     CHK_STATUS(setTransceiverPayloadTypes(pKvsPeerConnection->pCodecTable, pKvsPeerConnection->pRtxTable, pKvsPeerConnection->pTransceievers));
     CHK_STATUS(setReceiversSsrc(pSessionDescription, pKvsPeerConnection->pTransceievers));
+
+    if (NULL != getenv(DEBUG_LOG_SDP)) {
+        DLOGD("REMOTE_SDP:%s\n", pSessionDescriptionInit->sdp);
+    }
 
 CleanUp:
 
@@ -838,12 +908,16 @@ STATUS setLocalDescription(PRtcPeerConnection pPeerConnection, PRtcSessionDescri
 {
     ENTERS();
     STATUS retStatus = STATUS_SUCCESS;
+
     PKvsPeerConnection pKvsPeerConnection = (PKvsPeerConnection) pPeerConnection;
 
     CHK(pKvsPeerConnection != NULL && pSessionDescriptionInit != NULL, STATUS_NULL_ARG);
 
     CHK_STATUS(iceAgentStartGathering(pKvsPeerConnection->pIceAgent));
 
+    if (NULL != getenv(DEBUG_LOG_SDP)) {
+        DLOGD("LOCAL_SDP:%s", pSessionDescriptionInit->sdp);
+    }
 CleanUp:
 
     LEAVES();
@@ -952,7 +1026,48 @@ CleanUp:
 
     LEAVES();
     return retStatus;
+}
 
+STATUS restartIce(PRtcPeerConnection pPeerConnection)
+{
+    ENTERS();
+    STATUS retStatus = STATUS_SUCCESS;
+    PKvsPeerConnection pKvsPeerConnection = (PKvsPeerConnection) pPeerConnection;
+
+    CHK(pKvsPeerConnection != NULL, STATUS_NULL_ARG);
+
+    /* generate new local uFrag and uPwd and clear out remote uFrag and uPwd */
+    CHK_STATUS(generateJSONSafeString(pKvsPeerConnection->localIceUfrag, LOCAL_ICE_UFRAG_LEN));
+    CHK_STATUS(generateJSONSafeString(pKvsPeerConnection->localIcePwd, LOCAL_ICE_PWD_LEN));
+    pKvsPeerConnection->remoteIceUfrag[0] = '\0';
+    pKvsPeerConnection->remoteIcePwd[0] = '\0';
+    CHK_STATUS(iceAgentRestart(pKvsPeerConnection->pIceAgent,
+                               pKvsPeerConnection->localIceUfrag,
+                               pKvsPeerConnection->localIcePwd));
+
+CleanUp:
+
+    CHK_LOG_ERR(retStatus);
+
+    LEAVES();
+    return retStatus;
+}
+
+PUBLIC_API NullableBool canTrickleIceCandidates(PRtcPeerConnection pPeerConnection)
+{
+    NullableBool canTrickle = {FALSE, FALSE};
+    PKvsPeerConnection pKvsPeerConnection = (PKvsPeerConnection) pPeerConnection;
+    STATUS retStatus = STATUS_SUCCESS;
+
+    CHK(pKvsPeerConnection != NULL, STATUS_NULL_ARG);
+    if (pKvsPeerConnection != NULL) {
+        canTrickle = pKvsPeerConnection->canTrickleIce;
+    }
+
+CleanUp:
+
+    CHK_LOG_ERR(retStatus);
+    return canTrickle;
 }
 
 STATUS initKvsWebRtc(VOID)

@@ -4,10 +4,6 @@
 #include <thread>
 #include <mutex>
 
-#define KVS_USE_OPENSSL
-#define KVS_BUILD_WITH_LWS
-#include "../open-source/amazon-kinesis-video-streams-producer-c/src/source/Common/Include_i.h"
-
 #define TEST_DEFAULT_REGION                                     ((PCHAR) "us-west-2")
 #define TEST_STREAMING_TOKEN_DURATION                           (40 * HUNDREDS_OF_NANOS_IN_A_SECOND)
 #define TEST_JITTER_BUFFER_CLOCK_RATE                           (1000)
@@ -17,8 +13,17 @@
 #define SIGNAING_TEST_CORRELATION_ID                            (PCHAR) "Test_correlation_id"
 #define TEST_SIGNALING_MESSAGE_TTL                              (120 * HUNDREDS_OF_NANOS_IN_A_SECOND)
 #define TEST_VIDEO_FRAME_SIZE                                   (120 * 1024)
+#define TEST_ICE_CONFIG_INFO_POLL_PERIOD                        (20 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND)
+#define TEST_ASYNC_ICE_CONFIG_INFO_WAIT_TIMEOUT                 (3 * HUNDREDS_OF_NANOS_IN_A_SECOND)
 
 namespace com { namespace amazonaws { namespace kinesis { namespace video { namespace webrtcclient {
+
+// This comes from Producer-C, but is not exported. We are copying it here instead of making it part of the public API.
+// It *MAY* become de-synchronized. If you hit issues after updating Producer-C confirm these two structs are in sync
+typedef struct {
+    AwsCredentialProvider credentialProvider;
+    PAwsCredentials pAwsCredentials;
+} StaticCredentialProvider, *PStaticCredentialProvider;
 
 class WebRtcClientTestBase : public ::testing::Test {
 public:
