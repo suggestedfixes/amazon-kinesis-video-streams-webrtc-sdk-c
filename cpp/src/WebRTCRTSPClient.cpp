@@ -12,5 +12,6 @@ WebRTCRTSPClient::WebRTCRTSPClient(UsageEnvironment& env, char const* rtspURL,
 {
 }
 
-WebRTCRTSPClient::~WebRTCRTSPClient() {
+WebRTCRTSPClient::~WebRTCRTSPClient()
+{
 }

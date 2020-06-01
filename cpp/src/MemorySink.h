@@ -28,8 +28,14 @@ private:
     virtual Boolean continuePlaying();
 
 private:
-    u_int8_t* fReceiveBuffer;
-    u_int8_t* h264Buffer;
+    PBYTE fReceiveBuffer;
+    PBYTE h264Buffer;
+    PBYTE sps;
+    PBYTE pps;
+    bool set_sps;
+    bool set_pps;
+    int sps_size;
+    int pps_size;
     MediaSubsession& fSubsession;
     char* fStreamId;
     Frame frame;

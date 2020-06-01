@@ -20,12 +20,12 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 // client application.  For a full-featured RTSP client application - with much more functionality, and many options - see
 // "openRTSP": http://www.live555.com/openRTSP/
 
+#include "webrtc.h"
 #include "BasicUsageEnvironment.hh"
-#include "liveMedia.hh"
 #include "MemorySink.h"
 #include "StreamClientState.h"
 #include "WebRTCRTSPClient.h"
-#include "webrtc.h"
+#include "liveMedia.hh"
 
 extern PSampleConfiguration gSampleConfiguration;
 
@@ -75,7 +75,8 @@ PVOID receiveMedia(PVOID args)
 
 char eventLoopWatchVariable = 0;
 
-PVOID streamVideo(PVOID args) {
+PVOID streamVideo(PVOID args)
+{
     STATUS retStatus = STATUS_SUCCESS;
     TaskScheduler* scheduler = BasicTaskScheduler::createNew();
     UsageEnvironment* env = BasicUsageEnvironment::createNew(*scheduler);
@@ -85,7 +86,8 @@ PVOID streamVideo(PVOID args) {
     return (PVOID)(ULONG_PTR)retStatus;
 }
 
-int webrtc_server(char** argv) {
+int webrtc_server(char** argv)
+{
     STATUS retStatus = STATUS_SUCCESS;
     SignalingClientCallbacks signalingClientCallbacks;
     SignalingClientInfo clientInfo;
@@ -158,14 +160,15 @@ CleanUp:
     return retStatus;
 }
 
-int trampoline(char** argv) {
+int trampoline(char** argv)
+{
     return webrtc_server(argv);
 }
 
 int main(int argc, char** argv)
 {
     trampoline(argv);
-    return 0; 
+    return 0;
 }
 
 #define RTSP_CLIENT_VERBOSITY_LEVEL 1 // by default, print verbose output from each "RTSPClient"
@@ -449,5 +452,3 @@ void shutdownStream(RTSPClient* rtspClient, int exitCode)
         exit(exitCode);
     }
 }
-
-

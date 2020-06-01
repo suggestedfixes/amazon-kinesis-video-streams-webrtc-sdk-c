@@ -15,8 +15,8 @@ MemorySink::MemorySink(UsageEnvironment& env, MediaSubsession& subsession, char 
     , fSubsession(subsession)
 {
     fStreamId = strDup(streamId);
-    fReceiveBuffer = new u_int8_t[MEMORY_SINK_RECEIVE_BUFFER_SIZE];
-    h264Buffer = new u_int8_t[MEMORY_SINK_RECEIVE_BUFFER_SIZE];
+    fReceiveBuffer = new BYTE[MEMORY_SINK_RECEIVE_BUFFER_SIZE];
+    h264Buffer = new BYTE[MEMORY_SINK_RECEIVE_BUFFER_SIZE];
     h264Buffer[0] = 0;
     h264Buffer[1] = 0;
     h264Buffer[2] = 0;
@@ -24,6 +24,10 @@ MemorySink::MemorySink(UsageEnvironment& env, MediaSubsession& subsession, char 
 
     frame.duration = 0;
     frame.version = FRAME_CURRENT_VERSION;
+    set_sps = false;
+    set_pps = false;
+    sps = new BYTE[128];
+    pps = new BYTE[128];
 }
 
 MemorySink::~MemorySink()
@@ -31,6 +35,8 @@ MemorySink::~MemorySink()
     delete[] fReceiveBuffer;
     delete[] h264Buffer;
     delete[] fStreamId;
+    delete[] sps;
+    delete[] pps;
 }
 
 void MemorySink::afterGettingFrame(void* clientData, unsigned frameSize, unsigned numTruncatedBytes,
@@ -41,7 +47,7 @@ void MemorySink::afterGettingFrame(void* clientData, unsigned frameSize, unsigne
 }
 
 // If you don't want to see debugging output for each received frame, then comment out the following line:
-//#define DEBUG_PRINT_EACH_RECEIVED_FRAME
+//#define DEBUG_PRINT_EACH_RECEIVED_FRAME 1
 //#define DEBUG_PRINT_NPT
 
 void MemorySink::afterGettingFrame(unsigned frameSize, unsigned numTruncatedBytes,
@@ -56,22 +62,39 @@ void MemorySink::afterGettingFrame(unsigned frameSize, unsigned numTruncatedByte
     UINT64 time = GETTIME();
     int nal_type = 1;
 
-
     char channel;
     if (fStreamId && strlen(fStreamId) > 10) {
         channel = fStreamId[strlen(fStreamId) - 2];
     }
 
     if (strncmp(fSubsession.codecName(), "H264", 4) == 0 && pSampleConfiguration) {
-        nal_type = fReceiveBuffer[0] & 0x1f;
-        frame.flags = FRAME_FLAG_NONE; 
-        MEMCPY((PBYTE)h264Buffer + 4, (PBYTE)fReceiveBuffer, frameSize);
 
+        bool skip = false;
+        nal_type = fReceiveBuffer[0] & 0x1f;
+        MEMCPY(h264Buffer + 4, fReceiveBuffer, frameSize);
+
+        switch (nal_type) {
+        case 1:
+            frame.flags = FRAME_FLAG_INVISIBLE_FRAME;
+            break;
+        case 5:
+            frame.flags = FRAME_FLAG_KEY_FRAME;
+            break;
+        case 7:
+        // fall through
+        case 8:
+            frame.flags = FRAME_FLAG_DISCARDABLE_FRAME;
+            break;
+        default:
+            frame.flags = FRAME_FLAG_NONE;
+        }
+
+        //depayH264FromRtpPayload(fReceiveBuffer, frameSize, h264Buffer, &frame.size, NULL);
         frame.trackId = DEFAULT_VIDEO_TRACK_ID;
-        frame.frameData = h264Buffer; 
+        frame.frameData = h264Buffer;
         frame.size = frameSize + 4;
 
-        if (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->updatingSampleStreamingSessionList)) {
+        if (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->updatingSampleStreamingSessionList) && !skip) {
             ATOMIC_INCREMENT(&pSampleConfiguration->streamingSessionListReadingThreadCount);
             for (int i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
                 pSampleStreamingSession = pSampleConfiguration->sampleStreamingSessionList[i];
@@ -108,20 +131,27 @@ void MemorySink::afterGettingFrame(unsigned frameSize, unsigned numTruncatedByte
         envir() << "!"; // mark the debugging output to indicate that this presentation time is not RTCP-synchronized
     }
 
-    int column_width = 16;
-    char data_buffer[500];
+    //    int column_width = 16;
     printf("\n");
-    for (int j = 0; j < frame.size; j++) {
-        int i = j % column_width;
-        data_buffer[i] = frame.frameData[j]; 
+    for (int j = 4; j < 8; j++) {
+        printf("%2x ", h264Buffer[j]);
+    }
+    printf("\n");
 
-        if (i == column_width - 1) {
+/*
+    for (j = 0; j < frame.size; j++) {
+        int i = j % column_width;
+        int r = j / column_width;
+        data_buffer[i] = frame.frameData[j]; 
+        bool isLastRow = r + 1 == last_row;
+
+        if ((i == column_width - 1) {
             for (int k = 0; k < column_width; k++) {
                 printf("%2x ", data_buffer[k]); 
             }
             printf(" ");
             for (int k = 0; k < column_width; k++) {
-                if (data_buffer[k] >= 0x20) {
+                if (data_buffer[k] >= 0x20 && data_buffer[k] <= 0x9f) {
                     printf("%c", data_buffer[k]); 
                 } else {
                     printf(".");
@@ -134,6 +164,7 @@ void MemorySink::afterGettingFrame(unsigned frameSize, unsigned numTruncatedByte
             break;
         }
     }
+    */
 #ifdef DEBUG_PRINT_NPT
     envir() << "\tNPT: " << fSubsession.getNormalPlayTime(presentationTime);
 #endif
