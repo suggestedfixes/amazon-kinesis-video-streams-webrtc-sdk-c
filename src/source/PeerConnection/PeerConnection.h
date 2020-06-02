@@ -56,6 +56,9 @@ typedef struct {
     CHAR localIceUfrag[LOCAL_ICE_UFRAG_LEN + 1];
     CHAR localIcePwd[LOCAL_ICE_PWD_LEN + 1];
 
+    CHAR remoteIceUfrag[LOCAL_ICE_UFRAG_LEN + 1];
+    CHAR remoteIcePwd[LOCAL_ICE_PWD_LEN + 1];
+
     CHAR localCNAME[LOCAL_CNAME_LEN + 1];
 
     CHAR remoteCertificateFingerprint[CERTIFICATE_FINGERPRINT_LENGTH + 1];
@@ -86,9 +89,11 @@ typedef struct {
 
     UINT64 onConnectionStateChangeCustomData;
     RtcOnConnectionStateChange onConnectionStateChange;
-    RTC_PEER_CONNECTION_STATE previousConnectionState;
+    RTC_PEER_CONNECTION_STATE connectionState;
 
     UINT16 MTU;
+
+    NullableBool canTrickleIce;
 } KvsPeerConnection, *PKvsPeerConnection;
 
 typedef struct {
@@ -104,6 +109,7 @@ VOID onSctpSessionDataChannelMessage(UINT64, UINT32, BOOL, PBYTE, UINT32);
 VOID onSctpSessionDataChannelOpen(UINT64, UINT32, PBYTE, UINT32);
 
 STATUS sendPacketToRtpReceiver(PKvsPeerConnection, PBYTE, UINT32);
+STATUS changePeerConnectionState(PKvsPeerConnection, RTC_PEER_CONNECTION_STATE);
 
 #ifdef  __cplusplus
 }
