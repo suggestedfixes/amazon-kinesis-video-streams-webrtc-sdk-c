@@ -161,7 +161,12 @@ STATUS socketConnectionSendData(PSocketConnection pSocketConnection, PBYTE pBuf,
 
     CHK(pSocketConnection != NULL, STATUS_NULL_ARG);
     CHK((pSocketConnection->protocol == KVS_SOCKET_PROTOCOL_TCP || pDestIp != NULL), STATUS_INVALID_ARG);
-    CHK_WARN(!ATOMIC_LOAD_BOOL(&pSocketConnection->connectionClosed), STATUS_SOCKET_CONNECTION_CLOSED_ALREADY, "Failed to send data. Socket closed already");
+
+    // Using a single CHK_WARN might output too much spew in bad network conditions
+    if (ATOMIC_LOAD_BOOL(&pSocketConnection->connectionClosed)) {
+        DLOGD("Warning: Failed to send data. Socket closed already");
+        CHK(FALSE, STATUS_SOCKET_CONNECTION_CLOSED_ALREADY);
+    }
 
     MUTEX_LOCK(pSocketConnection->lock);
     locked = TRUE;
@@ -184,7 +189,7 @@ STATUS socketConnectionSendData(PSocketConnection pSocketConnection, PBYTE pBuf,
                     case SSL_ERROR_WANT_WRITE:
                         break;
                     default:
-                        DLOGW("SSL_write failed with %s", ERR_error_string(sslErr, NULL));
+                        DLOGD("Warning: SSL_write failed with %s", ERR_error_string(sslErr, NULL));
                         DLOGD("Close socket %d", pSocketConnection->localSocket);
                         ATOMIC_STORE_BOOL(&pSocketConnection->connectionClosed, TRUE);
                         break;
@@ -229,9 +234,10 @@ CleanUp:
 STATUS socketConnectionReadData(PSocketConnection pSocketConnection, PBYTE pBuf, UINT32 bufferLen, PUINT32 pDataLen)
 {
     STATUS retStatus = STATUS_SUCCESS;
-    BOOL locked = FALSE;
-    INT32 sslReadRet = 0, sslErrorRet = 0;
+    BOOL locked = FALSE, continueRead = TRUE;
+    INT32 sslReadRet = 0;
     UINT32 writtenBytes = 0;
+    UINT64 sslErrorRet;
 
     CHK(pSocketConnection != NULL && pBuf != NULL && pDataLen != NULL, STATUS_NULL_ARG);
     CHK(bufferLen != 0, STATUS_INVALID_ARG);
@@ -245,27 +251,35 @@ STATUS socketConnectionReadData(PSocketConnection pSocketConnection, PBYTE pBuf,
     CHK(BIO_write(pSocketConnection->pReadBio, pBuf, *pDataLen) > 0, STATUS_SECURE_SOCKET_READ_FAILED);
 
     // read as much as possible
-    while(writtenBytes < bufferLen) {
+    while(continueRead && writtenBytes < bufferLen) {
         sslReadRet = SSL_read(pSocketConnection->pSsl, pBuf + writtenBytes, bufferLen - writtenBytes);
-        // if SSL_read fail or has no more data, break and consume already written data.
-        // Unlikely that we will get sslReadRet == 0 here because socketConnectionReadData is only called when
-        // socket recevies data. If ssl handshake is not done then -1 is returned.
         if (sslReadRet <= 0) {
-            sslErrorRet = SSL_get_error(pSocketConnection->pSsl, sslReadRet);
-            if (sslErrorRet != SSL_ERROR_WANT_WRITE && sslErrorRet != SSL_ERROR_WANT_READ) {
-                DLOGV("SSL_read failed with %s. Length of data already written %u", ERR_error_string(sslErrorRet, NULL), writtenBytes);
+            sslReadRet = SSL_get_error(pSocketConnection->pSsl, sslReadRet);
+            switch (sslReadRet) {
+                case SSL_ERROR_WANT_WRITE:
+                    continueRead = FALSE;
+                    break;
+                case SSL_ERROR_WANT_READ:
+                    break;
+                default:
+                    sslErrorRet = ERR_get_error();
+                    DLOGW("SSL_read failed with %s", ERR_error_string(sslErrorRet, NULL));
+                    break;
             }
             break;
+        } else {
+            writtenBytes += sslReadRet;
         }
-
-        writtenBytes += sslReadRet;
     }
 
     *pDataLen = writtenBytes;
 
 CleanUp:
 
-    CHK_LOG_ERR(retStatus);
+    // CHK_LOG_ERR might be too verbose
+    if (STATUS_FAILED(retStatus)) {
+        DLOGD("Warning: reading socket data failed with 0x%08x", retStatus);
+    }
 
     if (locked) {
         MUTEX_UNLOCK(pSocketConnection->lock);
@@ -428,6 +442,10 @@ STATUS socketSendDataWithRetry(PSocketConnection pSocketConnection, PBYTE buf, U
 
 CleanUp:
 
-    CHK_LOG_ERR(retStatus);
+    // CHK_LOG_ERR might be too verbose in this case
+    if (STATUS_FAILED(retStatus)) {
+        DLOGD("Warning: Send data failed with 0x%08x", retStatus);
+    }
+
     return retStatus;
 }

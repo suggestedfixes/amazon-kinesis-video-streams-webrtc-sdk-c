@@ -38,7 +38,14 @@ void WebRtcClientTestBase::SetUp()
 
     SET_INSTRUMENTED_ALLOCATORS();
 
-    SET_LOGGER_LOG_LEVEL(LOG_LEVEL_DEBUG);
+    mLogLevel = LOG_LEVEL_DEBUG;
+
+    PCHAR logLevelStr = GETENV(DEBUG_LOG_LEVEL_ENV_VAR);
+    if (logLevelStr != NULL) {
+        ASSERT_EQ(STATUS_SUCCESS, STRTOUI32(logLevelStr, NULL, 10, &mLogLevel));
+    }
+
+    SET_LOGGER_LOG_LEVEL(mLogLevel);
 
     initKvsWebRtc();
 
@@ -214,13 +221,40 @@ void WebRtcClientTestBase::addTrackToPeerConnection(PRtcPeerConnection pRtcPeerC
     EXPECT_EQ(STATUS_SUCCESS, addTransceiver(pRtcPeerConnection, track, NULL, transceiver));
 }
 
+
+STATUS awaitGetIceConfigInfoCount(SIGNALING_CLIENT_HANDLE signalingClientHandle, PUINT32 pIceConfigInfoCount)
+{
+    STATUS retStatus = STATUS_SUCCESS;
+    UINT64 elapsed = 0;
+
+    CHK(IS_VALID_SIGNALING_CLIENT_HANDLE(signalingClientHandle) && pIceConfigInfoCount != NULL, STATUS_NULL_ARG);
+
+    while (TRUE) {
+        // Get the configuration count
+        CHK_STATUS(signalingClientGetIceConfigInfoCount(signalingClientHandle, pIceConfigInfoCount));
+
+        // Return OK if we have some ice configs
+        CHK(*pIceConfigInfoCount == 0, retStatus);
+
+        // Check for timeout
+        CHK_ERR(elapsed <= TEST_ASYNC_ICE_CONFIG_INFO_WAIT_TIMEOUT, STATUS_OPERATION_TIMED_OUT, "Couldn't retrieve ICE configurations in alotted time.");
+
+        THREAD_SLEEP(TEST_ICE_CONFIG_INFO_POLL_PERIOD);
+        elapsed += TEST_ICE_CONFIG_INFO_POLL_PERIOD;
+    }
+
+CleanUp:
+
+    return retStatus;
+}
+
 void WebRtcClientTestBase::getIceServers(PRtcConfiguration pRtcConfiguration)
 {
     UINT32 i, j, iceConfigCount, uriCount;
     PIceConfigInfo pIceConfigInfo;
 
     // Assume signaling client is already created
-    EXPECT_EQ(STATUS_SUCCESS, signalingClientGetIceConfigInfoCount(mSignalingClientHandle, &iceConfigCount));
+    EXPECT_EQ(STATUS_SUCCESS, awaitGetIceConfigInfoCount(mSignalingClientHandle, &iceConfigCount));
 
     // Set the  STUN server
     SNPRINTF(pRtcConfiguration->iceServers[0].urls, MAX_ICE_CONFIG_URI_LEN, KINESIS_VIDEO_STUN_URL, TEST_DEFAULT_REGION);
