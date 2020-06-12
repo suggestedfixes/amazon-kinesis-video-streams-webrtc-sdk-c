@@ -91,7 +91,7 @@ STATUS allocateSctp(PKvsPeerConnection pKvsPeerConnection)
         sctpSessionWriteDcep(pKvsPeerConnection->pSctpSession, currentDataChannelId, pKvsDataChannel->dataChannel.name, STRLEN(pKvsDataChannel->dataChannel.name), &pKvsDataChannel->rtcDataChannelInit);
 
         if (pKvsDataChannel->onOpen != NULL) {
-            pKvsDataChannel->onOpen(pKvsDataChannel->onOpenCustomData);
+            pKvsDataChannel->onOpen(pKvsDataChannel->onOpenCustomData, &pKvsDataChannel->dataChannel);
         }
     }
 
@@ -396,7 +396,7 @@ VOID onSctpSessionDataChannelMessage(UINT64 customData, UINT32 channelId, BOOL i
     CHK_STATUS(hashTableGet(pKvsPeerConnection->pDataChannels, channelId, (PUINT64) &pKvsDataChannel));
     CHK(pKvsDataChannel != NULL && pKvsDataChannel->onMessage != NULL, STATUS_INTERNAL_ERROR);
 
-    pKvsDataChannel->onMessage(pKvsDataChannel->onMessageCustomData, isBinary, pMessage, pMessageLen);
+    pKvsDataChannel->onMessage(pKvsDataChannel->onMessageCustomData, &pKvsDataChannel->dataChannel, isBinary, pMessage, pMessageLen);
 
 CleanUp:
     if (STATUS_FAILED(retStatus)) {
@@ -710,13 +710,13 @@ STATUS peerConnectionGetLocalDescription(PRtcPeerConnection pRtcPeerConnection, 
 {
     ENTERS();
     STATUS retStatus = STATUS_SUCCESS;
-    SessionDescription sessionDescription;
+    PSessionDescription pSessionDescription = NULL;
     UINT32 deserializeLen = 0;
     PKvsPeerConnection pKvsPeerConnection = (PKvsPeerConnection) pRtcPeerConnection;
 
     CHK(pRtcPeerConnection != NULL && pRtcSessionDescriptionInit != NULL, STATUS_NULL_ARG);
 
-    MEMSET(&sessionDescription, 0x00, SIZEOF(SessionDescription));
+    CHK(NULL != (pSessionDescription = (PSessionDescription) MEMCALLOC(1, SIZEOF(SessionDescription))), STATUS_NOT_ENOUGH_MEMORY);
 
     if (pKvsPeerConnection->isOffer) {
         pRtcSessionDescriptionInit->type = SDP_TYPE_OFFER;
@@ -724,13 +724,15 @@ STATUS peerConnectionGetLocalDescription(PRtcPeerConnection pRtcPeerConnection, 
         pRtcSessionDescriptionInit->type = SDP_TYPE_ANSWER;
     }
 
-    CHK_STATUS(populateSessionDescription(pKvsPeerConnection, &(pKvsPeerConnection->remoteSessionDescription), &sessionDescription));
-    CHK_STATUS(deserializeSessionDescription(&sessionDescription, NULL, &deserializeLen));
+    CHK_STATUS(populateSessionDescription(pKvsPeerConnection, &(pKvsPeerConnection->remoteSessionDescription), pSessionDescription));
+    CHK_STATUS(deserializeSessionDescription(pSessionDescription, NULL, &deserializeLen));
     CHK(deserializeLen <= MAX_SESSION_DESCRIPTION_INIT_SDP_LEN, STATUS_NOT_ENOUGH_MEMORY);
 
-    CHK_STATUS(deserializeSessionDescription(&sessionDescription, pRtcSessionDescriptionInit->sdp, &deserializeLen));
+    CHK_STATUS(deserializeSessionDescription(pSessionDescription, pRtcSessionDescriptionInit->sdp, &deserializeLen));
 
 CleanUp:
+
+    SAFE_MEMFREE(pSessionDescription);
 
     LEAVES();
     return retStatus;
@@ -740,7 +742,7 @@ STATUS peerConnectionGetCurrentLocalDescription(PRtcPeerConnection pRtcPeerConne
 {
     ENTERS();
     STATUS retStatus = STATUS_SUCCESS;
-    SessionDescription sessionDescription;
+    PSessionDescription pSessionDescription = NULL;
     UINT32 deserializeLen = 0;
     PKvsPeerConnection pKvsPeerConnection = (PKvsPeerConnection) pRtcPeerConnection;
 
@@ -748,15 +750,17 @@ STATUS peerConnectionGetCurrentLocalDescription(PRtcPeerConnection pRtcPeerConne
     // do nothing if remote session description hasn't been received
     CHK(pKvsPeerConnection->remoteSessionDescription.sessionName[0] != '\0', retStatus);
 
-    MEMSET(&sessionDescription, 0x00, SIZEOF(SessionDescription));
+    CHK(NULL != (pSessionDescription = (PSessionDescription) MEMCALLOC(1, SIZEOF(SessionDescription))), STATUS_NOT_ENOUGH_MEMORY);
 
-    CHK_STATUS(populateSessionDescription(pKvsPeerConnection, &(pKvsPeerConnection->remoteSessionDescription), &sessionDescription));
-    CHK_STATUS(deserializeSessionDescription(&sessionDescription, NULL, &deserializeLen));
+    CHK_STATUS(populateSessionDescription(pKvsPeerConnection, &(pKvsPeerConnection->remoteSessionDescription), pSessionDescription));
+    CHK_STATUS(deserializeSessionDescription(pSessionDescription, NULL, &deserializeLen));
     CHK(deserializeLen <= MAX_SESSION_DESCRIPTION_INIT_SDP_LEN, STATUS_NOT_ENOUGH_MEMORY);
 
-    CHK_STATUS(deserializeSessionDescription(&sessionDescription, pRtcSessionDescriptionInit->sdp, &deserializeLen));
+    CHK_STATUS(deserializeSessionDescription(pSessionDescription, pRtcSessionDescriptionInit->sdp, &deserializeLen));
 
 CleanUp:
+
+    SAFE_MEMFREE(pSessionDescription);
 
     LEAVES();
     return retStatus;
@@ -771,7 +775,7 @@ STATUS setRemoteDescription(PRtcPeerConnection pPeerConnection, PRtcSessionDescr
 
     CHK(pPeerConnection != NULL, STATUS_NULL_ARG);
     PKvsPeerConnection pKvsPeerConnection = (PKvsPeerConnection) pPeerConnection;
-    PSessionDescription pSessionDescription = &(pKvsPeerConnection->remoteSessionDescription);
+    PSessionDescription pSessionDescription = &pKvsPeerConnection->remoteSessionDescription;
 
     CHK(pSessionDescriptionInit != NULL, STATUS_NULL_ARG);
 
@@ -819,8 +823,8 @@ STATUS setRemoteDescription(PRtcPeerConnection pPeerConnection, PRtcSessionDescr
 
     if (!IS_EMPTY_STRING(pKvsPeerConnection->remoteIceUfrag) &&
         !IS_EMPTY_STRING(pKvsPeerConnection->remoteIcePwd) &&
-        STRNCMP(pKvsPeerConnection->remoteIceUfrag, remoteIceUfrag, LOCAL_ICE_UFRAG_LEN) != 0 &&
-        STRNCMP(pKvsPeerConnection->remoteIcePwd, remoteIcePwd, LOCAL_ICE_PWD_LEN) != 0) {
+        STRNCMP(pKvsPeerConnection->remoteIceUfrag, remoteIceUfrag, MAX_ICE_UFRAG_LEN) != 0 &&
+        STRNCMP(pKvsPeerConnection->remoteIcePwd, remoteIcePwd, MAX_ICE_PWD_LEN) != 0) {
 
         CHK_STATUS(generateJSONSafeString(pKvsPeerConnection->localIceUfrag, LOCAL_ICE_UFRAG_LEN));
         CHK_STATUS(generateJSONSafeString(pKvsPeerConnection->localIcePwd, LOCAL_ICE_PWD_LEN));
@@ -830,8 +834,8 @@ STATUS setRemoteDescription(PRtcPeerConnection pPeerConnection, PRtcSessionDescr
         CHK_STATUS(iceAgentStartGathering(pKvsPeerConnection->pIceAgent));
     }
 
-    STRNCPY(pKvsPeerConnection->remoteIceUfrag, remoteIceUfrag, LOCAL_ICE_UFRAG_LEN);
-    STRNCPY(pKvsPeerConnection->remoteIcePwd, remoteIcePwd, LOCAL_ICE_PWD_LEN);
+    STRNCPY(pKvsPeerConnection->remoteIceUfrag, remoteIceUfrag, MAX_ICE_UFRAG_LEN);
+    STRNCPY(pKvsPeerConnection->remoteIcePwd, remoteIcePwd, MAX_ICE_PWD_LEN);
 
     CHK_STATUS(iceAgentStartAgent(pKvsPeerConnection->pIceAgent,
                                   pKvsPeerConnection->remoteIceUfrag,
@@ -858,27 +862,30 @@ STATUS createOffer(PRtcPeerConnection pPeerConnection, PRtcSessionDescriptionIni
 {
     ENTERS();
     STATUS retStatus = STATUS_SUCCESS;
-    SessionDescription sessionDescription;
+    PSessionDescription pSessionDescription = NULL;
     UINT32 deserializeLen = 0;
 
     PKvsPeerConnection pKvsPeerConnection = (PKvsPeerConnection) pPeerConnection;
 
     CHK(pKvsPeerConnection != NULL && pSessionDescriptionInit != NULL, STATUS_NULL_ARG);
 
-    MEMSET(&sessionDescription, 0x00, SIZEOF(SessionDescription));
+    // SessionDescription is large enough structure to not define on the stack and use heap memory
+    CHK(NULL != (pSessionDescription = (PSessionDescription) MEMCALLOC(1, SIZEOF(SessionDescription))), STATUS_NOT_ENOUGH_MEMORY);
     pSessionDescriptionInit->type = SDP_TYPE_OFFER;
     pKvsPeerConnection->isOffer = TRUE;
 
     pKvsPeerConnection->sctpIsEnabled = TRUE;
     CHK_STATUS(setPayloadTypesForOffer(pKvsPeerConnection->pCodecTable));
 
-    CHK_STATUS(populateSessionDescription(pKvsPeerConnection, &(pKvsPeerConnection->remoteSessionDescription), &sessionDescription));
-    CHK_STATUS(deserializeSessionDescription(&sessionDescription, NULL, &deserializeLen));
+    CHK_STATUS(populateSessionDescription(pKvsPeerConnection, &(pKvsPeerConnection->remoteSessionDescription), pSessionDescription));
+    CHK_STATUS(deserializeSessionDescription(pSessionDescription, NULL, &deserializeLen));
     CHK(deserializeLen <= MAX_SESSION_DESCRIPTION_INIT_SDP_LEN, STATUS_NOT_ENOUGH_MEMORY);
 
-    CHK_STATUS(deserializeSessionDescription(&sessionDescription, pSessionDescriptionInit->sdp, &deserializeLen));
+    CHK_STATUS(deserializeSessionDescription(pSessionDescription, pSessionDescriptionInit->sdp, &deserializeLen));
 
 CleanUp:
+
+    SAFE_MEMFREE(pSessionDescription);
 
     LEAVES();
     return retStatus;

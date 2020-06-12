@@ -18,6 +18,7 @@ extern "C" {
 #include <com/amazonaws/kinesis/video/client/Include.h>
 #include <com/amazonaws/kinesis/video/common/Include.h>
 #include <com/amazonaws/kinesis/video/webrtcclient/NullableDefs.h>
+#include <com/amazonaws/kinesis/video/webrtcclient/Stats.h>
 
 #pragma clang diagnostic pop
 
@@ -39,6 +40,7 @@ extern "C" {
 #define STATUS_SESSION_DESCRIPTION_INVALID_SESSION_DESCRIPTION                      STATUS_WEBRTC_BASE + 0x00000007
 #define STATUS_SESSION_DESCRIPTION_MISSING_ICE_VALUES                               STATUS_WEBRTC_BASE + 0x00000008
 #define STATUS_SESSION_DESCRIPTION_MISSING_CERTIFICATE_FINGERPRINT                  STATUS_WEBRTC_BASE + 0x00000009
+#define STATUS_SESSION_DESCRIPTION_MAX_MEDIA_COUNT                                  STATUS_WEBRTC_BASE + 0x0000000A
 /*!@} */
 
 /*===========================================================================================*/
@@ -475,6 +477,22 @@ extern "C" {
  * Version of SignalingMessage structure
  */
 #define SIGNALING_MESSAGE_CURRENT_VERSION                                           0
+
+/**
+ * Version of RtcIceMetrics structure
+ */
+#define RTC_ICE_METRICS_CURRENT_VERSION                                             0
+
+/**
+ * Version of RtcStreamMetrics structure
+ */
+#define RTC_STREAM_METRICS_CURRENT_VERSION                                          0
+
+/**
+ * Version of SignalingClientMetrics structure
+ */
+#define SIGNALING_CLIENT_METRICS_CURRENT_VERSION                                    0
+
 /*!@} */
 
 /*===========================================================================================*/
@@ -642,18 +660,27 @@ typedef VOID (*RtcOnBandwidthEstimation)(UINT64, DOUBLE);
 typedef VOID (*RtcOnPictureLoss)(UINT64);
 
 /**
+ * @brief RtcDataChannel represents a bi-directional data channel between two peers.
+ *
+ * Reference: https://www.w3.org/TR/webrtc/#dom-rtcdatachannel
+ */
+typedef struct __RtcDataChannel {
+    CHAR name[MAX_DATA_CHANNEL_NAME_LEN + 1]; //!< Define name of data channel. Max length is 256 characters
+} RtcDataChannel, *PRtcDataChannel;
+
+/**
  * @brief RtcOnMessage is fired when a message is received for the DataChannel
  *
  * Reference: https://www.w3.org/TR/webrtc/#dom-rtcdatachannel-onmessage
  */
-typedef VOID (*RtcOnMessage)(UINT64, BOOL, PBYTE, UINT32);
+typedef VOID (*RtcOnMessage)(UINT64, PRtcDataChannel, BOOL, PBYTE, UINT32);
 
 /**
  * RtcOnOpen is fired when the DataChannel has opened
  *
  * Reference: https://www.w3.org/TR/webrtc/#dom-rtcdatachannel-onopen
  */
-typedef VOID (*RtcOnOpen)(UINT64);
+typedef VOID (*RtcOnOpen)(UINT64, PRtcDataChannel);
 
 /**
  * @brief RtcOnDataChannel is fired when the remote PeerConnection
@@ -661,8 +688,7 @@ typedef VOID (*RtcOnOpen)(UINT64);
  *
  * Reference: https://www.w3.org/TR/webrtc/#dom-rtcpeerconnection-ondatachannel
  */
-struct __RtcDataChannel;
-typedef VOID (*RtcOnDataChannel)(UINT64, struct __RtcDataChannel*);
+typedef VOID (*RtcOnDataChannel)(UINT64, PRtcDataChannel);
 
 /**
  * @brief RtcOnIceCandidate is fired when new iceCandidate is found. if PCHAR is NULL then candidate gathering is done.
@@ -1218,15 +1244,6 @@ typedef struct {
 } RtcRtpTransceiverInit, *PRtcRtpTransceiverInit;
 
 /**
- * @brief RtcDataChannel represents a bi-directional data channel between two peers.
- *
- * Reference: https://www.w3.org/TR/webrtc/#dom-rtcdatachannel
- */
-typedef struct __RtcDataChannel {
-    CHAR name[MAX_DATA_CHANNEL_NAME_LEN + 1]; //!< Define name of data channel. Max length is 256 characters
-} RtcDataChannel, *PRtcDataChannel;
-
-/**
  * @brief RtcDataChannelInit dictionary used to configure properties of the
  * underlying channel such as data reliability
  *
@@ -1242,6 +1259,54 @@ typedef struct {
     BOOL negotiated; //!< If set to true, it is up to the application to negotiate the channel and create an
                      //!< RTCDataChannel object with the same id as the other peer.
 } RtcDataChannelInit, *PRtcDataChannelInit;
+
+/////////////////////////////////////////////////////
+/// Metrics/Stats Related structures
+/////////////////////////////////////////////////////
+
+/**
+ * @brief Collection of ICE related stats
+ * Reference: https://www.w3.org/TR/webrtc-stats/#ice-server-dict*
+ * Reference: https://www.w3.org/TR/webrtc-stats/#icecandidate-dict*
+ * Reference: https://www.w3.org/TR/webrtc-stats/#candidatepair-dict*
+ */
+typedef struct {
+    UINT32 version; //!< Structure version
+    RtcIceServerStats rtcIceServerStats; //!< Server related stats. Reference in Stats.h
+    RtcIceCandidateStats rtcIceCandidateStats; //!< Single candidate stats. Reference in Stats.h
+    RtcIceCandidatePairStats rtcIceCandidatePairStats; //!< Candidate pair stats. Reference in Stats.h
+} RtcIceMetrics, *PRtcIceMetrics;
+
+/**
+ * @brief Collection of RTP stream related stats
+ * Reference: https://www.w3.org/TR/webrtc-stats/#remoteinboundrtpstats-dict*
+ * Reference: https://www.w3.org/TR/webrtc-stats/#outboundrtpstats-dict*
+ * Reference: https://www.w3.org/TR/webrtc-stats/#transportstats-dict*
+ */
+typedef struct {
+    UINT32 version; //!< Structure version
+    RtcRemoteInboundRtpStreamStats rtcInboundStats; //!< Inbound RTP Stats. Reference in Stats.h
+    RtcOutboundRtpStreamStats rtcOutboundStats; //!< Outbound RTP Stats. Reference in Stats.h
+    RtcTransportStats rtcTransportStats; //!< Transport stats. Reference in Stats.h
+} RtcStreamMetrics, *PRtcStreamMetrics;
+
+/**
+ * @brief SignalingStats Collection of signaling related stats. Can be expanded in the future
+ */
+typedef struct {
+    UINT32 version; //!< Structure version
+    SignalingClientStats signalingClientStats; //!< Signaling client metrics stats. Reference in Stats.h
+} SignalingClientMetrics, *PSignalingClientMetrics;
+
+/**
+ * @brief The stats object is populated based on RTCStatsType request
+ *
+ */
+typedef struct {
+    UINT64 timestamp; //!< Timestamp of request for stats
+    RTC_STATS_TYPE requestedTypeOfStats; //!< Type of stats requested. Set to RTC_ALL to get all supported stats
+    RtcStatsObject rtcStatsObject; //!< Object that is populated by the SDK on request
+} RtcStats, *PRtcStats;
 
 ////////////////////////////////////////////////////
 // Public functions
@@ -1717,6 +1782,23 @@ PUBLIC_API STATUS signalingClientGetStateString(SIGNALING_CLIENT_STATE, PCHAR*);
  * @return STATUS code of the execution. STATUS_SUCCESS on success
  */
 PUBLIC_API STATUS signalingClientDeleteSync(SIGNALING_CLIENT_HANDLE);
+
+/**
+ * @brief Get signaling related metrics
+ *
+ * @param[in] SIGNALING_CLIENT_HANDLE Signaling client handle
+ * @param[in/out] PSignalingClientMetrics Signaling stats
+ */
+PUBLIC_API STATUS signalingClientGetMetrics(SIGNALING_CLIENT_HANDLE, PSignalingClientMetrics);
+
+/**
+ * @brief Get the relevant/all metrics based on the RTCStatsType field. This does not include
+ * any signaling related metrics
+ *
+ * @param PRtcPeerConnection Peer connection for which the stats need to be collected
+ * @param[in/out] PRtcStats The stats object with the RTCStatsType field populated
+ */
+PUBLIC_API STATUS RtcPeerConnectionGetMetrics(PRtcPeerConnection, PRtcStats);
 
 #ifdef  __cplusplus
 }

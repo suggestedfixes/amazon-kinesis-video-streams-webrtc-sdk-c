@@ -29,19 +29,8 @@ extern "C" {
 
 #define CA_CERT_PEM_FILE_EXTENSION                                              ".pem"
 
-
-#define APP_RECEIVE_VIDEO_AUDIO  TRUE
-#define APP_DATA_TRANSFER        TRUE
-#define APP_TRICKLE_ICE          FALSE
-#define APP_TURN                 TRUE
-
-#define APP_GST_ERR_RECOVERY     FALSE
-#define APP_GST_EOS_EXIT         FALSE
-#define APP_GST_RTSPSRC_EXT      TRUE
-#define APP_GST_ENFORCE_TCP      TRUE
-#define APP_GST_RTSPSRC_AFT      TRUE
-
-#define APP_GST_STRLEN           1024 
+#define FILE_LOGGING_BUFFER_SIZE                                                (100 * 1024)
+#define MAX_NUMBER_OF_LOG_FILES                                                  5
 
 typedef enum {
     SAMPLE_STREAMING_VIDEO_ONLY,
@@ -79,6 +68,7 @@ typedef struct {
     CVAR cvar;
     BOOL trickleIce;
     BOOL useTurn;
+    BOOL enableFileLogging;
     UINT64 customData;
     PSampleStreamingSession sampleStreamingSessionList[DEFAULT_MAX_CONCURRENT_STREAMING_SESSION];
     UINT32 streamingSessionCount;

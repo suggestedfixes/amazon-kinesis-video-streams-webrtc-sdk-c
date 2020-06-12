@@ -123,8 +123,8 @@ STATUS createCertificateAndKey(INT32 certificateBits, BOOL generateRSACertificat
     CHK((*ppCert = X509_new()) != NULL, STATUS_CERTIFICATE_GENERATION_FAILED);
     X509_set_version(*ppCert, 2);
     ASN1_INTEGER_set(X509_get_serialNumber(*ppCert), GENERATED_CERTIFICATE_SERIAL);
-    X509_gmtime_adj(X509_get_notBefore(*ppCert), -1 * GENERATED_CERTIFICATE_DAYS);
-    X509_gmtime_adj(X509_get_notAfter(*ppCert), GENERATED_CERTIFICATE_DAYS);
+    X509_gmtime_adj(X509_get_notBefore(*ppCert), -1 * GENERATED_CERTIFICATE_DAYS * SECONDS_IN_A_DAY);
+    X509_gmtime_adj(X509_get_notAfter(*ppCert), GENERATED_CERTIFICATE_DAYS * SECONDS_IN_A_DAY);
     CHK(X509_set_pubkey(*ppCert, *ppPkey) != 0, STATUS_CERTIFICATE_GENERATION_FAILED);
 
     CHK((pX509Name = X509_get_subject_name(*ppCert)) != NULL, STATUS_CERTIFICATE_GENERATION_FAILED);
@@ -508,12 +508,12 @@ STATUS dtlsSessionProcessPacket(PDtlsSession pDtlsSession, PBYTE pData, PINT32 p
         LOG_OPENSSL_ERROR("SSL_read");
     }
 
-    if (ATOMIC_LOAD_BOOL(&pDtlsSession->sslInitFinished)) {
+    if (!ATOMIC_LOAD_BOOL(&pDtlsSession->sslInitFinished)) {
         CHK_STATUS(dtlsCheckOutgoingDataBuffer(pDtlsSession));
-    } else {
-        // if dtls handshake is done, and SSL_read did not fail, then sslRet and number of sctp bytes read
-        dataLen = sslRet < 0 ? 0 : sslRet;
     }
+
+    /* if SSL_read failed then set to 0 */
+    dataLen = sslRet < 0 ? 0 : sslRet;
 
     if (isClosed) {
         ATOMIC_STORE_BOOL(&pDtlsSession->shutdown, TRUE);
@@ -578,7 +578,7 @@ STATUS dtlsSessionShutdown(PDtlsSession pDtlsSession)
 
     MUTEX_LOCK(pDtlsSession->sslLock);
     locked = TRUE;
-    
+
     CHK(!ATOMIC_LOAD_BOOL(&pDtlsSession->shutdown), retStatus);
     CHK(ATOMIC_LOAD_BOOL(&pDtlsSession->sslInitFinished), retStatus);
 
