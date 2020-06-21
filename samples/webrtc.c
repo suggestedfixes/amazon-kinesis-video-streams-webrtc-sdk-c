@@ -478,8 +478,8 @@ void trampoline(CHAR* argv[])
         SIGNALING_CHANNEL_ROLE_TYPE_MASTER,
         APP_TRICKLE_ICE, APP_TURN,
         &pSampleConfiguration));
-    printf("[KVS GStreamer Master] Created signaling channel %s\n", argv[1]);
 
+    strcpy(pSampleConfiguration->clientInfo.clientId, SAMPLE_MASTER_CLIENT_ID);
     pSampleConfiguration->videoSource = sendGstreamerAudioVideo;
     pSampleConfiguration->mediaType = SAMPLE_STREAMING_VIDEO_ONLY;
 
