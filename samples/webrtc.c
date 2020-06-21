@@ -512,6 +512,8 @@ void trampoline(CHAR* argv[])
         CHK_STATUS(genCerts(pSampleConfiguration));
     }
 
+    strcpy(pSampleConfiguration->clientInfo.clientId, SAMPLE_MASTER_CLIENT_ID);
+
     CHK_STATUS(createSignalingClientSync(
         &pSampleConfiguration->clientInfo,
         &pSampleConfiguration->channelInfo,
