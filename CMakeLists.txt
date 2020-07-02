@@ -75,7 +75,8 @@ if(BUILD_DEPENDENCIES)
   endif()
 
   # building kvsCommonLws also builds kvspic
-  build_dependency(kvsCommonLws)
+  set(BUILD_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE})
+  build_dependency(kvsCommonLws ${BUILD_ARGS})
 
   message(STATUS "Finished building dependencies.")
 endif()
@@ -191,7 +192,8 @@ file(
   "src/source/Sdp/*.c"
   "src/source/Srtp/*.c"
   "src/source/Stun/*.c"
-  "src/source/Sctp/*.c")
+  "src/source/Sctp/*.c"
+  "src/source/Metrics/*.c")
 
 file(GLOB WEBRTC_SIGNALING_CLIENT_SOURCE_FILES "src/source/Signaling/*.c")
 
@@ -259,9 +261,12 @@ if(GST_FOUND)
     ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/Common.c
     ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/kvsWebRTCClientMasterGstreamerSample.c
   )
-  target_link_libraries(kvsWebrtcClientMasterGstSample kvsWebrtcClient
-      kvsWebrtcSignalingClient ${GST_SAMPLE_LIBRARIES}
-      kvspicUtils)
+
+  target_link_libraries(kvsWebrtcClientMasterGstSample kvsWebrtcClient kvsWebrtcSignalingClient ${GST_SAMPLE_LIBRARIES} kvspicUtils)
+
+  install(TARGETS kvsWebrtcClientMasterGstSample
+    RUNTIME DESTINATION bin
+  )
 
   add_executable(
     webrtc
@@ -279,11 +284,14 @@ if(GST_FOUND)
   )
   target_link_libraries(webrtcMonitor kvsWebrtcClient kvsWebrtcSignalingClient ${GST_SAMPLE_LIBRARIES}
       kvspicUtils)
+
 endif()
 
 if(BUILD_TEST)
   add_subdirectory(tst)
 endif()
+
+if(FALSE)
 
 option(CHIPSET_NAME "" s3l)
 
@@ -388,3 +396,14 @@ target_link_libraries(
     ${OPENSSL_SSL_LIBRARY}
     ${OPENSSL_CRYPTO_LIBRARY}
 )
+endif()
+
+install(TARGETS kvsWebrtcClient kvsWebrtcSignalingClient kvsWebrtcClientMaster kvsWebrtcClientViewer discoverNatBehavior
+  RUNTIME DESTINATION bin
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  )
+
+install(DIRECTORY ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/src/include/
+  DESTINATION include
+  )
