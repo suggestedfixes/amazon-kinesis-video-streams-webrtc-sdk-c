@@ -27,13 +27,13 @@ void setMainstream(PSampleStreamingSession pSession, BOOL mainstream)
     ATOMIC_STORE_BOOL(&pSession->pSampleConfiguration->updatingSampleStreamingSessionList, FALSE);
 }
 
-VOID onDataChannelMessage(UINT64 customData, BOOL isBinary, PBYTE pMessage, UINT32 pMessageLen)
+VOID onDataChannelMessage(UINT64 customData, PRtcDataChannel pDataChannel, BOOL isBinary, PBYTE pMessage, UINT32 pMessageLen)
 {
     PSampleStreamingSession pSession = (PSampleStreamingSession)customData;
     if (isBinary) {
         DLOGD("DataChannel Binary Message");
     } else {
-        DLOGD(">>>>>>>>DataChannel String Message: %.*s\n", pMessageLen, pMessage);
+        DLOGD(">>>>>>>>>>>>>>>>>DataChannel String Message: %.*s\n", pMessageLen, pMessage);
     }
     if (strncmp(pMessage, "mainstream", 10) == 0) {
         setMainstream(pSession, TRUE);
