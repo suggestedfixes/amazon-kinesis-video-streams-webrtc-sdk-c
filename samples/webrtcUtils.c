@@ -55,7 +55,9 @@ VOID onConnectionStateChange(UINT64 customData, RTC_PEER_CONNECTION_STATE newSta
 
     DLOGI("New connection state %u", newState);
 
-    if (newState == RTC_PEER_CONNECTION_STATE_FAILED || newState == RTC_PEER_CONNECTION_STATE_CLOSED) {
+    if (newState == RTC_PEER_CONNECTION_STATE_FAILED ||
+        newState == RTC_PEER_CONNECTION_STATE_CLOSED ||
+        newState == RTC_PEER_CONNECTION_STATE_DISCONNECTED) {
         ATOMIC_STORE_BOOL(&pSampleStreamingSession->terminateFlag, TRUE);
         CVAR_BROADCAST(pSampleStreamingSession->pSampleConfiguration->cvar);
     }
@@ -141,6 +143,7 @@ STATUS masterMessageReceived(UINT64 customData, PReceivedSignalingMessage pRecei
     PSampleStreamingSession pSampleStreamingSession = NULL;
     UINT32 i;
     BOOL locked = FALSE;
+    ATOMIC_BOOL expected = FALSE;
 
     CHK(pSampleConfiguration != NULL, STATUS_NULL_ARG);
 
@@ -174,10 +177,16 @@ STATUS masterMessageReceived(UINT64 customData, PReceivedSignalingMessage pRecei
 
     switch (pReceivedSignalingMessage->signalingMessage.messageType) {
     case SIGNALING_MESSAGE_TYPE_OFFER:
-        CHK_STATUS(handleOffer(pSampleConfiguration,
-            pSampleStreamingSession,
-            &pReceivedSignalingMessage->signalingMessage));
-        break;
+            if (ATOMIC_COMPARE_EXCHANGE_BOOL(&pSampleStreamingSession->sdpOfferAnswerExchanged, &expected, TRUE)) {
+                CHK_STATUS(handleOffer(pSampleConfiguration,
+                                       pSampleStreamingSession,
+                                       &pReceivedSignalingMessage->signalingMessage));
+            } else {
+                DLOGD("Offer already received, ignore new offer from client id %s",
+                      pReceivedSignalingMessage->signalingMessage.peerClientId);
+            }
+            break;
+
     case SIGNALING_MESSAGE_TYPE_ICE_CANDIDATE:
         CHK_STATUS(handleRemoteCandidate(pSampleStreamingSession, &pReceivedSignalingMessage->signalingMessage));
         break;
@@ -223,6 +232,7 @@ STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSe
     STATUS retStatus = STATUS_SUCCESS;
     RtcSessionDescriptionInit offerSessionDescriptionInit;
     BOOL locked = FALSE;
+    NullableBool canTrickle;
 
     CHK(pSampleConfiguration != NULL && pSignalingMessage != NULL, STATUS_NULL_ARG);
 
@@ -231,6 +241,11 @@ STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSe
 
     CHK_STATUS(deserializeSessionDescriptionInit(pSignalingMessage->payload, pSignalingMessage->payloadLen, &offerSessionDescriptionInit));
     CHK_STATUS(setRemoteDescription(pSampleStreamingSession->pPeerConnection, &offerSessionDescriptionInit));
+    canTrickle = canTrickleIceCandidates(pSampleStreamingSession->pPeerConnection);
+
+    CHECK(!NULLABLE_CHECK_EMPTY(canTrickle));
+    pSampleConfiguration->trickleIce = canTrickle.value;
+
     CHK_STATUS(createAnswer(pSampleStreamingSession->pPeerConnection, &pSampleStreamingSession->answerSessionDescriptionInit));
     CHK_STATUS(setLocalDescription(pSampleStreamingSession->pPeerConnection, &pSampleStreamingSession->answerSessionDescriptionInit));
     if (!pSampleConfiguration->trickleIce) {
@@ -241,12 +256,10 @@ STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSe
             CHK_WARN(!ATOMIC_LOAD_BOOL(&pSampleStreamingSession->terminateFlag), STATUS_OPERATION_TIMED_OUT,
                      "application terminated and candidate gathering still not done");
             CVAR_WAIT(pSampleConfiguration->cvar, pSampleConfiguration->sampleConfigurationObjLock, 5 * HUNDREDS_OF_NANOS_IN_A_SECOND);
-
         }
 
         MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
         locked = FALSE;
-
 
         DLOGD("Candidate collection done for non trickle ice");
         // get the latest local description once candidate gathering is done
@@ -283,7 +296,6 @@ CleanUp:
     if (locked) {
         MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
     }
-
 
     return retStatus;
 }
@@ -324,7 +336,8 @@ VOID onIceCandidateHandler(UINT64 customData, PCHAR candidateJson)
         ATOMIC_STORE_BOOL(&pSampleStreamingSession->candidateGatheringDone, TRUE);
         CVAR_BROADCAST(pSampleStreamingSession->pSampleConfiguration->cvar);
 
-    } else if (pSampleStreamingSession->pSampleConfiguration->trickleIce && ATOMIC_LOAD_BOOL(&pSampleStreamingSession->peerIdReceived)) {
+    } else if (pSampleStreamingSession->pSampleConfiguration->trickleIce &&
+            ATOMIC_LOAD_BOOL(&pSampleStreamingSession->peerIdReceived)) {
         message.version = SIGNALING_MESSAGE_CURRENT_VERSION;
         message.messageType = SIGNALING_MESSAGE_TYPE_ICE_CANDIDATE;
         STRCPY(message.peerClientId, pSampleStreamingSession->peerId);
@@ -367,11 +380,13 @@ STATUS initializePeerConnection(PSampleConfiguration pSampleConfiguration, PRtcP
         // Set the URIs from the configuration
         CHK_STATUS(awaitGetIceConfigInfoCount(pSampleConfiguration->signalingClientHandle, &iceConfigCount));
 
+
+
         for (uriCount = 0, i = 0; i < maxTurnServer; i++) {
             CHK_STATUS(signalingClientGetIceConfigInfo(pSampleConfiguration->signalingClientHandle, i, &pIceConfigInfo));
             for (j = 0; j < pIceConfigInfo->uriCount; j++) {
                 CHECK(uriCount < MAX_ICE_SERVERS_COUNT);
-                SNPRINTF(configuration.iceServers[uriCount + 1].urls, MAX_ICE_CONFIG_URI_LEN, "%s?transport=udp", pIceConfigInfo->uris[j]);
+                STRNCPY(configuration.iceServers[uriCount + 1].urls, pIceConfigInfo->uris[j], MAX_ICE_CONFIG_URI_LEN);
                 STRNCPY(configuration.iceServers[uriCount + 1].credential, pIceConfigInfo->password, MAX_ICE_CONFIG_CREDENTIAL_LEN);
                 STRNCPY(configuration.iceServers[uriCount + 1].username, pIceConfigInfo->userName, MAX_ICE_CONFIG_USER_NAME_LEN);
 
@@ -513,7 +528,8 @@ STATUS freeSampleStreamingSession(PSampleStreamingSession* ppSampleStreamingSess
         THREAD_JOIN(pSampleStreamingSession->receiveAudioVideoSenderTid, NULL);
     }
 
-    freePeerConnection(&pSampleStreamingSession->pPeerConnection);
+    CHK_LOG_ERR(closePeerConnection(pSampleStreamingSession->pPeerConnection));
+    CHK_LOG_ERR(freePeerConnection(&pSampleStreamingSession->pPeerConnection));
     SAFE_MEMFREE(pSampleStreamingSession);
 
 CleanUp:
@@ -565,16 +581,32 @@ CleanUp:
     return retStatus;
 }
 
+STATUS traverseDirectoryPEMFileScan(UINT64 customData, DIR_ENTRY_TYPES entryType, PCHAR fullPath, PCHAR fileName) {
+    UNUSED_PARAM(entryType);
+    UNUSED_PARAM(fullPath);
+
+    PCHAR certName = (PCHAR) customData;
+    UINT32 fileNameLen = STRLEN(fileName);
+
+    if(fileNameLen > ARRAY_SIZE(CA_CERT_PEM_FILE_EXTENSION) + 1 &&
+       (STRCMPI(CA_CERT_PEM_FILE_EXTENSION, &fileName[fileNameLen - ARRAY_SIZE(CA_CERT_PEM_FILE_EXTENSION) + 1]) == 0))
+    {
+        certName[0] = FPATHSEPARATOR;
+        certName++;
+        STRCPY(certName, fileName);
+    }
+
+    return STATUS_SUCCESS;
+}
+
 STATUS lookForSslCert(PSampleConfiguration* ppSampleConfiguration)
 {
     STATUS retStatus = STATUS_SUCCESS;
     struct stat pathStat;
-    UINT32 length = 0;
-    DIR* dp;
-    struct dirent* entry;
-    BOOL certFound = FALSE;
+    CHAR certName[MAX_PATH_LEN];
     PSampleConfiguration pSampleConfiguration = *ppSampleConfiguration;
 
+    MEMSET(certName, 0x0, ARRAY_SIZE(certName));
     pSampleConfiguration->pCaCertPath = getenv(CACERT_PATH_ENV_VAR);
 
     // if ca cert path is not set from the environment, try to use the one that cmake detected
@@ -585,36 +617,17 @@ STATUS lookForSslCert(PSampleConfiguration* ppSampleConfiguration)
         // Check if the environment variable is a path
         CHK(0 == FSTAT(pSampleConfiguration->pCaCertPath, &pathStat), STATUS_DIRECTORY_ENTRY_STAT_ERROR);
 
-        // If CaCertPath is a directory, check for a file with .pem extension in this directory
         if (S_ISDIR(pathStat.st_mode)) {
-            CHK_ERR((dp = opendir(pSampleConfiguration->pCaCertPath)) != NULL, STATUS_DIRECTORY_OPEN_FAILED, "Cannot open directory");
+            CHK_STATUS(traverseDirectory(pSampleConfiguration->pCaCertPath, (UINT64) &certName, /* iterate */ FALSE, traverseDirectoryPEMFileScan));
 
-            while ((entry = readdir(dp)) != NULL) {
-                if (entry->d_type != DT_DIR) {
-                    // Get length of detected filename
-                    length = (UINT32)STRLEN(entry->d_name);
-                    CHK(length > (ARRAY_SIZE(CA_CERT_PEM_FILE_EXTENSION) - 1), STATUS_INVALID_ARG_LEN);
-                    if ((0 == STRCMPI(CA_CERT_PEM_FILE_EXTENSION, &entry->d_name[length - ARRAY_SIZE(CA_CERT_PEM_FILE_EXTENSION) + 1]))) {
-                        // Check if the length of path and filename together is less than MAX_PATH_LEN
-                        CHK((length + STRLEN(pSampleConfiguration->pCaCertPath) + 1) <= MAX_PATH_LEN, STATUS_INVALID_ARG_LEN);
-                        // If the length checks out, it means we can form a valid absolute path to file
-                        STRCAT(pSampleConfiguration->pCaCertPath, entry->d_name);
-                        certFound = TRUE;
-                        break;
-                    }
-                }
-            }
-
-            // If cert is not found in given path, consider the path given by CMake
-            if (certFound == FALSE) {
+            if(certName[0] != 0x0) {
+                STRCAT(pSampleConfiguration->pCaCertPath, certName);
+            } else {
                 DLOGW("Cert not found in path set...checking if CMake detected a path\n");
                 CHK_ERR(STRNLEN(DEFAULT_KVS_CACERT_PATH, MAX_PATH_LEN) > 0, STATUS_INVALID_OPERATION, "No ca cert path given (error:%s)", strerror(errno));
                 DLOGI("CMake detected cert path\n");
                 pSampleConfiguration->pCaCertPath = DEFAULT_KVS_CACERT_PATH;
             }
-            closedir(dp);
-        } else {
-            CHK_ERR(length != MAX_PATH_LEN, STATUS_INVALID_OPERATION, "No ca cert path given");
         }
     }
 
@@ -638,7 +651,10 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
     CHK_ERR((pAccessKey = getenv(ACCESS_KEY_ENV_VAR)) != NULL, STATUS_INVALID_OPERATION, "AWS_ACCESS_KEY_ID must be set");
     CHK_ERR((pSecretKey = getenv(SECRET_KEY_ENV_VAR)) != NULL, STATUS_INVALID_OPERATION, "AWS_SECRET_ACCESS_KEY must be set");
     pSessionToken = getenv(SESSION_TOKEN_ENV_VAR);
-
+    pSampleConfiguration->enableFileLogging = FALSE;
+    if(NULL != getenv(ENABLE_FILE_LOGGING)) {
+        pSampleConfiguration->enableFileLogging = TRUE;
+    }
     if ((pSampleConfiguration->channelInfo.pRegion = getenv(DEFAULT_REGION_ENV_VAR)) == NULL) {
         pSampleConfiguration->channelInfo.pRegion = DEFAULT_AWS_REGION;
     }
@@ -662,6 +678,8 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
     pSampleConfiguration->signalingClientHandle = INVALID_SIGNALING_CLIENT_HANDLE_VALUE;
     pSampleConfiguration->sampleConfigurationObjLock = MUTEX_CREATE(TRUE);
     pSampleConfiguration->cvar = CVAR_CREATE();
+
+
     pSampleConfiguration->trickleIce = trickleIce;
     pSampleConfiguration->useTurn = useTurn;
 
@@ -729,7 +747,8 @@ STATUS freeSampleConfiguration(PSampleConfiguration* ppSampleConfiguration)
     SAFE_MEMFREE(pSampleConfiguration->pVideoFrameBuffer);
     SAFE_MEMFREE(pSampleConfiguration->pAudioFrameBuffer);
 
-    if (IS_VALID_CVAR_VALUE(pSampleConfiguration->cvar) && IS_VALID_MUTEX_VALUE(pSampleConfiguration->sampleConfigurationObjLock)) {
+    if (IS_VALID_CVAR_VALUE(pSampleConfiguration->cvar) &&
+            IS_VALID_MUTEX_VALUE(pSampleConfiguration->sampleConfigurationObjLock)) {
         CVAR_BROADCAST(pSampleConfiguration->cvar);
         // lock to wait until awoken thread finish.
         MUTEX_LOCK(pSampleConfiguration->sampleConfigurationObjLock);
@@ -785,8 +804,8 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
                 // swap with last element and decrement count
                 pSampleConfiguration->streamingSessionCount--;
                 pSampleConfiguration->sampleStreamingSessionList[i] = pSampleConfiguration->sampleStreamingSessionList[pSampleConfiguration->streamingSessionCount];
-                CHK_STATUS(freeSampleStreamingSession(&pSampleStreamingSession));
                 ATOMIC_STORE_BOOL(&pSampleConfiguration->updatingSampleStreamingSessionList, FALSE);
+                CHK_STATUS(freeSampleStreamingSession(&pSampleStreamingSession));
                 genCerts(pSampleConfiguration);
             }
         }
@@ -819,6 +838,7 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
 
 CleanUp:
 
+    CHK_LOG_ERR(retStatus);
     if (locked) {
         MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
     }

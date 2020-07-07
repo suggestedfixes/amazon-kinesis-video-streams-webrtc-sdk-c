@@ -1,5 +1,6 @@
 #include <gst/app/gstappsink.h>
 #include <gst/gst.h>
+#include <gst/rtsp/gstrtsptransport.h>
 
 #include "webrtc.h"
 
@@ -212,7 +213,7 @@ void makeGstPipline(PSampleConfiguration pSampleConfiguration, PCHAR rtspsrc, PC
     g_object_set(G_OBJECT(source),
         "location", rtspsrc,
         "short-header", TRUE,
-        "protocols", "tcp",
+        "protocols", GST_RTSP_LOWER_TRANS_TCP,
         NULL);
 
     depay = gst_element_factory_make("rtph264depay", "depay");
@@ -474,7 +475,7 @@ int main(int argc, char** argv)
                     THREAD_CREATE(&logId, std2fileLogger, APP_LOG_PATH);
                 }
             } else {
-                THREAD_CREATE(&logId, std2fileLogger, APP_LOG_PATH);
+               THREAD_CREATE(&logId, std2fileLogger, APP_LOG_PATH);
             }
 
             trampoline(argc, argv);
