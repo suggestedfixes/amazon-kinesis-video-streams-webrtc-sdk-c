@@ -2095,15 +2095,11 @@ STATUS incomingRelayedDataHandler(UINT64 customData, PSocketConnection pSocketCo
 
     CHK(pRelayedCandidate != NULL && pSocketConnection != NULL, STATUS_NULL_ARG);
 
-    CHK_STATUS(turnConnectionIncomingDataHandler(pRelayedCandidate->pTurnConnection, pBuffer, bufferLen, pSrc, pDest,
-                                                 turnChannelData, &turnChannelDataCount));
-    for (; i < turnChannelDataCount; ++i) {
-        incomingDataHandler((UINT64) pRelayedCandidate->pIceAgent,
-                            pSocketConnection,
-                            turnChannelData[i].data,
-                            turnChannelData[i].size,
-                            &turnChannelData[i].senderAddr,
-                            NULL);
+    CHK_STATUS(turnConnectionIncomingDataHandler(pRelayedCandidate->pTurnConnection, pBuffer, bufferLen, pSrc, pDest, turnChannelData,
+                                                 &turnChannelDataCount));
+    for (i = 0; i < turnChannelDataCount; ++i) {
+        incomingDataHandler((UINT64) pRelayedCandidate->pIceAgent, pSocketConnection, turnChannelData[i].data, turnChannelData[i].size,
+                            &turnChannelData[i].senderAddr, NULL);
     }
 
 CleanUp:
