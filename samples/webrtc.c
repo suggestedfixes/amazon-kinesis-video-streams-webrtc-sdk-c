@@ -214,6 +214,7 @@ void makeGstPipline(PSampleConfiguration pSampleConfiguration, PCHAR rtspsrc, PC
         "location", rtspsrc,
         "short-header", TRUE,
         "protocols", GST_RTSP_LOWER_TRANS_TCP,
+        "drop-on-latency", TRUE,
         NULL);
 
     depay = gst_element_factory_make("rtph264depay", "depay");
