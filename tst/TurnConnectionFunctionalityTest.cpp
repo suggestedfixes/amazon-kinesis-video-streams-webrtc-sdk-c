@@ -1,36 +1,39 @@
 #include "WebRTCClientTestFixture.h"
 
-namespace com { namespace amazonaws { namespace kinesis { namespace video { namespace webrtcclient {
+namespace com {
+namespace amazonaws {
+namespace kinesis {
+namespace video {
+namespace webrtcclient {
 
-    class TurnConnectionFunctionalityTest : public WebRtcClientTestBase {
-        PIceConfigInfo pIceConfigInfo;
-        TIMER_QUEUE_HANDLE timerQueueHandle = INVALID_TIMER_QUEUE_HANDLE_VALUE;
-        PConnectionListener pConnectionListener = NULL;
-    public:
+class TurnConnectionFunctionalityTest : public WebRtcClientTestBase {
+    PIceConfigInfo pIceConfigInfo;
+    TIMER_QUEUE_HANDLE timerQueueHandle = INVALID_TIMER_QUEUE_HANDLE_VALUE;
 
-        PTurnConnection pTurnConnection = NULL;
-        TurnChannelData turnChannelData[DEFAULT_TURN_CHANNEL_DATA_BUFFER_SIZE];
-        UINT32 turnChannelDataCount = ARRAY_SIZE(turnChannelData);
+  public:
+    PConnectionListener pConnectionListener = NULL;
+    PTurnConnection pTurnConnection = NULL;
+    TurnChannelData turnChannelData[DEFAULT_TURN_CHANNEL_DATA_BUFFER_SIZE];
+    UINT32 turnChannelDataCount = ARRAY_SIZE(turnChannelData);
 
-        VOID initializeTestTurnConnection()
-        {
-            UINT32 i, j, iceConfigCount, uriCount;
-            IceServer iceServers[MAX_ICE_SERVERS_COUNT];
-            PIceServer pTurnServer = NULL;
-            KvsIpAddress localIpInterfaces[MAX_LOCAL_NETWORK_INTERFACE_COUNT];
-            UINT32 localIpInterfaceCount = ARRAY_SIZE(localIpInterfaces);
-            PKvsIpAddress pTurnSocketAddr = NULL;
-            PSocketConnection pTurnSocket = NULL;
+    VOID initializeTestTurnConnection()
+    {
+        UINT32 i, j, iceConfigCount, uriCount;
+        IceServer iceServers[MAX_ICE_SERVERS_COUNT];
+        PIceServer pTurnServer = NULL;
+        KvsIpAddress localIpInterfaces[MAX_LOCAL_NETWORK_INTERFACE_COUNT];
+        UINT32 localIpInterfaceCount = ARRAY_SIZE(localIpInterfaces);
+        PKvsIpAddress pTurnSocketAddr = NULL;
+        PSocketConnection pTurnSocket = NULL;
 
-            initializeSignalingClient();
-            EXPECT_EQ(STATUS_SUCCESS, signalingClientGetIceConfigInfoCount(mSignalingClientHandle, &iceConfigCount));
+        initializeSignalingClient();
+        EXPECT_EQ(STATUS_SUCCESS, signalingClientGetIceConfigInfoCount(mSignalingClientHandle, &iceConfigCount));
 
-            for (uriCount = 0, i = 0; i < iceConfigCount; i++) {
-                EXPECT_EQ(STATUS_SUCCESS, signalingClientGetIceConfigInfo(mSignalingClientHandle, i, &pIceConfigInfo));
-                for (j = 0; j < pIceConfigInfo->uriCount; j++) {
-                    EXPECT_EQ(STATUS_SUCCESS, parseIceServer(&iceServers[uriCount++], pIceConfigInfo->uris[j], pIceConfigInfo->userName, pIceConfigInfo->password));
-
-                }
+        for (uriCount = 0, i = 0; i < iceConfigCount; i++) {
+            EXPECT_EQ(STATUS_SUCCESS, signalingClientGetIceConfigInfo(mSignalingClientHandle, i, &pIceConfigInfo));
+            for (j = 0; j < pIceConfigInfo->uriCount; j++) {
+                EXPECT_EQ(STATUS_SUCCESS,
+                          parseIceServer(&iceServers[uriCount++], pIceConfigInfo->uris[j], pIceConfigInfo->userName, pIceConfigInfo->password));
             }
 
             for (i = 0; i < uriCount && pTurnServer == NULL; ++i) {
@@ -374,42 +377,74 @@ namespace com { namespace amazonaws { namespace kinesis { namespace video { name
             MUTEX_UNLOCK(pTurnConnection->lock);
         }
 
-        EXPECT_TRUE(turnReady == TRUE);
+TEST_F(TurnConnectionFunctionalityTest, turnConnectionShutdownWithAllocationRemovesTurnSocketConnection)
+{
+    if (!mAccessKeyIdSet) {
+        return;
+    }
 
-        pCurrent = channelMsg;
+    BOOL doneAllocate = FALSE;
+    UINT64 shutdownTimeout;
+    UINT64 doneAllocateTimeout = GETTIME() + 10 * HUNDREDS_OF_NANOS_IN_A_SECOND;
+    PDoubleListNode pCurNode = NULL;
+    BOOL turnSocketRemoved = TRUE;
+    PSocketConnection pTurnSocketConnection = NULL, pSocketConnection = NULL;
 
-        EXPECT_EQ(STATUS_SUCCESS, turnConnectionHandleChannelDataTcpMode(pTurnConnection, pCurrent, ARRAY_SIZE(channelMsg), &turnChannelData,
-                                                                         &turnChannelDataCount, &dataLenProcessed));
-        /* Only parse out single channel data message */
-        EXPECT_EQ(turnChannelDataCount, 1);
-        EXPECT_EQ(turnChannelData.size, ARRAY_SIZE(channelData1) - TURN_DATA_CHANNEL_SEND_OVERHEAD);
-        EXPECT_EQ(0, MEMCMP(turnChannelData.data, channelData1 + TURN_DATA_CHANNEL_SEND_OVERHEAD, turnChannelData.size));
-        pCurrent += dataLenProcessed;
+    initializeTestTurnConnection();
+    pTurnSocketConnection = pTurnConnection->pControlChannel;
 
+    EXPECT_EQ(STATUS_SUCCESS, turnConnectionStart(pTurnConnection));
 
-        EXPECT_EQ(STATUS_SUCCESS, turnConnectionHandleChannelDataTcpMode(pTurnConnection, pCurrent,
-                                                                         20, &turnChannelData,
-                                                                         &turnChannelDataCount, &dataLenProcessed));
-        /* didnt parse out anything because not complete message was given */
-        EXPECT_EQ(turnChannelDataCount, 0);
-        pCurrent += dataLenProcessed;
+    // wait until channel is created
+    while (!doneAllocate && GETTIME() < doneAllocateTimeout) {
+        THREAD_SLEEP(100 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND);
+        MUTEX_LOCK(pTurnConnection->lock);
+        if (pTurnConnection->state == TURN_STATE_CREATE_PERMISSION) {
+            doneAllocate = TRUE;
+        }
+        MUTEX_UNLOCK(pTurnConnection->lock);
+    }
 
-        EXPECT_EQ(STATUS_SUCCESS, turnConnectionHandleChannelDataTcpMode(pTurnConnection, pCurrent,
-                                                                         ARRAY_SIZE(channelMsg), &turnChannelData,
-                                                                         &turnChannelDataCount, &dataLenProcessed));
-        EXPECT_EQ(turnChannelDataCount, 1);
-        EXPECT_EQ(turnChannelData.size, ARRAY_SIZE(channelData2) - TURN_DATA_CHANNEL_SEND_OVERHEAD);
-        EXPECT_EQ(0, MEMCMP(turnChannelData.data, channelData2 + TURN_DATA_CHANNEL_SEND_OVERHEAD, turnChannelData.size));
-        pCurrent += dataLenProcessed;
+    EXPECT_TRUE(doneAllocate == TRUE);
+    // return immediately
+    EXPECT_EQ(STATUS_SUCCESS, turnConnectionShutdown(pTurnConnection, 0));
 
-        EXPECT_EQ(STATUS_SUCCESS, turnConnectionHandleChannelDataTcpMode(pTurnConnection, pCurrent,
-                                                                         ARRAY_SIZE(channelMsg), &turnChannelData,
-                                                                         &turnChannelDataCount, &dataLenProcessed));
-        EXPECT_EQ(turnChannelDataCount, 1);
-        EXPECT_EQ(turnChannelData.size, ARRAY_SIZE(channelData3) - TURN_DATA_CHANNEL_SEND_OVERHEAD);
-        EXPECT_EQ(0, MEMCMP(turnChannelData.data, channelData3 + TURN_DATA_CHANNEL_SEND_OVERHEAD, turnChannelData.size));
+    shutdownTimeout = GETTIME() + 5 * HUNDREDS_OF_NANOS_IN_A_SECOND;
+    while (!turnConnectionIsShutdownComplete(pTurnConnection) && GETTIME() < shutdownTimeout) {
+        THREAD_SLEEP(HUNDREDS_OF_NANOS_IN_A_SECOND);
+    }
 
-        freeTestTurnConnection();
+    EXPECT_TRUE(!ATOMIC_LOAD_BOOL(&pTurnConnection->hasAllocation) || ATOMIC_LOAD_BOOL(&pTurnConnection->stopTurnConnection));
+
+    BOOL turnReady = FALSE;
+    KvsIpAddress turnPeerAddr;
+    TurnChannelData turnChannelData;
+    UINT32 turnChannelDataCount = 0, dataLenProcessed = 0;
+    UINT64 turnReadyTimeout = GETTIME() + 10 * HUNDREDS_OF_NANOS_IN_A_SECOND;
+    PBYTE pCurrent = NULL;
+
+    initializeTestTurnConnection();
+
+    turnPeerAddr.port = (UINT16) getInt16(8080);
+    turnPeerAddr.family = KVS_IP_FAMILY_TYPE_IPV4;
+    turnPeerAddr.isPointToPoint = FALSE;
+    /* random peer 77.1.1.1, we are not actually sending anything to it. */
+    turnPeerAddr.address[0] = 0x4d;
+    turnPeerAddr.address[1] = 0x01;
+    turnPeerAddr.address[2] = 0x01;
+    turnPeerAddr.address[3] = 0x01;
+
+    EXPECT_EQ(STATUS_SUCCESS, turnConnectionAddPeer(pTurnConnection, &turnPeerAddr));
+    EXPECT_EQ(STATUS_SUCCESS, turnConnectionStart(pTurnConnection));
+
+    // wait until channel is created
+    while (!turnReady && GETTIME() < turnReadyTimeout) {
+        THREAD_SLEEP(100 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND);
+        MUTEX_LOCK(pTurnConnection->lock);
+        if (pTurnConnection->state == TURN_STATE_READY) {
+            turnReady = TRUE;
+        }
+        MUTEX_UNLOCK(pTurnConnection->lock);
     }
 
     TEST_F(TurnConnectionFunctionalityTest, turnConnectionReceiveChannelDataMixedWithStunMessage)

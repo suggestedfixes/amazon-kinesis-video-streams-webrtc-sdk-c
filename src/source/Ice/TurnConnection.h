@@ -110,6 +110,7 @@ typedef struct {
 typedef struct __TurnConnection TurnConnection;
 struct __TurnConnection {
     volatile ATOMIC_BOOL stopTurnConnection;
+    volatile ATOMIC_BOOL shutdownComplete;
     volatile ATOMIC_BOOL hasAllocation;
     volatile SIZE_T timerCallbackId;
 
@@ -134,7 +135,7 @@ struct __TurnConnection {
     MUTEX sendLock;
     CVAR freeAllocationCvar;
 
-    volatile TURN_CONNECTION_STATE state;
+    TURN_CONNECTION_STATE state;
 
     UINT64 stateTimeoutTime;
 
