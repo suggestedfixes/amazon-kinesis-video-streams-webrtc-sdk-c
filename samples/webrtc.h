@@ -64,6 +64,7 @@ typedef struct {
     volatile ATOMIC_BOOL answerReceived;
     volatile ATOMIC_BOOL frameReceived;
     volatile SIZE_T streamingSessionListReadingThreadCount;
+    BOOL useTestSrc;
     ChannelInfo channelInfo;
     PCHAR pCaCertPath;
     PAwsCredentialProvider pCredentialProvider;
@@ -84,6 +85,7 @@ typedef struct {
     CVAR cvar;
     BOOL trickleIce;
     BOOL useTurn;
+    BOOL enableFileLogging;
     UINT64 customData;
     PSampleStreamingSession sampleStreamingSessionList[DEFAULT_MAX_CONCURRENT_STREAMING_SESSION];
     UINT32 streamingSessionCount;
@@ -99,6 +101,7 @@ struct __SampleStreamingSession {
     volatile ATOMIC_BOOL candidateGatheringDone;
     volatile ATOMIC_BOOL peerIdReceived;
     volatile ATOMIC_BOOL mainstream;
+    volatile ATOMIC_BOOL sdpOfferAnswerExchanged;
     volatile SIZE_T frameIndex;
     PRtcPeerConnection pPeerConnection;
     PRtcRtpTransceiver pVideoRtcRtpTransceiver;

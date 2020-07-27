@@ -280,6 +280,7 @@ if(BUILD_TEST)
   add_subdirectory(tst)
 endif()
 
+if(FALSE)
 option(CHIPSET_NAME "" s3l)
 
 set(CMAKE_SYSTEM_NAME Linux)
@@ -383,3 +384,4 @@ target_link_libraries(
     ${OPENSSL_SSL_LIBRARY}
     ${OPENSSL_CRYPTO_LIBRARY}
 )
+endif()
