@@ -4,6 +4,9 @@ sudo: true
 branches:
   only:
   - master
+  - upstream-master
+  - stable
+  - gst-rtsp-upstream-master
 
 cache:
 - directories:
