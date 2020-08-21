@@ -55,7 +55,7 @@ typedef struct {
     PSctpSession pSctpSession;
 
     SessionDescription remoteSessionDescription;
-    PDoubleList pTransceievers;
+    PDoubleList pTransceivers;
     BOOL sctpIsEnabled;
 
     CHAR localIceUfrag[LOCAL_ICE_UFRAG_LEN + 1];
@@ -108,7 +108,7 @@ typedef struct {
 } AllocateSctpSortDataChannelsData, *PAllocateSctpSortDataChannelsData;
 
 STATUS onFrameReadyFunc(UINT64, UINT16, UINT16, UINT32);
-STATUS onFrameDroppedFunc(UINT64, UINT32);
+STATUS onFrameDroppedFunc(UINT64, UINT16, UINT16, UINT32);
 VOID onSctpSessionOutboundPacket(UINT64, PBYTE, UINT32);
 VOID onSctpSessionDataChannelMessage(UINT64, UINT32, BOOL, PBYTE, UINT32);
 VOID onSctpSessionDataChannelOpen(UINT64, UINT32, PBYTE, UINT32);

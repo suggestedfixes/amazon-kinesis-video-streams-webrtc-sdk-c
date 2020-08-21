@@ -202,6 +202,7 @@ extern "C" {
 #define STATUS_SRTP_TRANSMIT_SESSION_CREATION_FAILED STATUS_SRTP_BASE + 0x00000003
 #define STATUS_SRTP_RECEIVE_SESSION_CREATION_FAILED  STATUS_SRTP_BASE + 0x00000004
 #define STATUS_SRTP_INIT_FAILED                      STATUS_SRTP_BASE + 0x00000005
+#define STATUS_SRTP_NOT_READY_YET                    STATUS_SRTP_BASE + 0x00000006
 /*!@} */
 
 /*===========================================================================================*/
@@ -667,6 +668,9 @@ typedef VOID (*RtcOnPictureLoss)(UINT64);
  */
 typedef struct __RtcDataChannel {
     CHAR name[MAX_DATA_CHANNEL_NAME_LEN + 1]; //!< Define name of data channel. Max length is 256 characters
+    UINT32 id;                                //!< Read only field. Setting this in the application has no effect. This field is populated with the id
+               //!< set by the peer connection's createDataChannel() call or the channel id is set in createDataChannel()
+               //!< on embedded end.
 } RtcDataChannel, *PRtcDataChannel;
 
 /**
@@ -778,6 +782,7 @@ typedef enum {
     RTC_RTP_TRANSCEIVER_DIRECTION_SENDRECV = 1, //!< This indicates that peer can send and receive data
     RTC_RTP_TRANSCEIVER_DIRECTION_SENDONLY = 2, //!< This indicates that the peer can only send information
     RTC_RTP_TRANSCEIVER_DIRECTION_RECVONLY = 3, //!< This indicates that the peer can only receive information
+    RTC_RTP_TRANSCEIVER_DIRECTION_INACTIVE = 4, //!< This indicates that the peer can not send or receive data
 } RTC_RTP_TRANSCEIVER_DIRECTION;
 
 /**
@@ -1019,7 +1024,7 @@ typedef struct {
  * Reference: https://www.w3.org/TR/webrtc/#rtcsessiondescription-class
  */
 typedef struct {
-    SDP_TYPE type;                                      //!< Indicates an offer/anser SDP type
+    SDP_TYPE type;                                      //!< Indicates an offer/answer SDP type
     CHAR sdp[MAX_SESSION_DESCRIPTION_INIT_SDP_LEN + 1]; //!< SDP Data containing media capabilities, transport addresses
                                                         //!< and related metadata in a transport agnostic manner
 } RtcSessionDescriptionInit, *PRtcSessionDescriptionInit;
@@ -1030,7 +1035,7 @@ typedef struct {
  * Reference: https://www.w3.org/TR/webrtc/#rtcicecandidate-interface
  */
 typedef struct {
-    CHAR candidate[MAX_ICE_CANDIDATE_INIT_CANDIDATE_LEN + 1]; //!< Candidate information contaiing details such as protocol
+    CHAR candidate[MAX_ICE_CANDIDATE_INIT_CANDIDATE_LEN + 1]; //!< Candidate information containing details such as protocol
                                                               //!< (udp/tcp), IP Address, priority and port
 } RtcIceCandidateInit, *PRtcIceCandidateInit;
 
@@ -1578,6 +1583,17 @@ PUBLIC_API STATUS transceiverOnFrame(PRtcRtpTransceiver, UINT64, RtcOnFrame);
  * @return STATUS code of the execution. STATUS_SUCCESS on success
  */
 PUBLIC_API STATUS transceiverOnBandwidthEstimation(PRtcRtpTransceiver, UINT64, RtcOnBandwidthEstimation);
+
+/**
+ * @brief Set a callback for picture loss packet (PLI)
+ *
+ * @param[in] PRtcRtpTransceiver Populated RtcRtpTransceiver struct
+ * @param[in] UINT64 User customData that will be passed along when RtcOnPictureLoss is called
+ * @param[in] RtcOnPictureLoss User RtcOnPictureLoss callback
+ *
+ * @return STATUS code of the execution. STATUS_SUCCESS on success
+ */
+PUBLIC_API STATUS transceiverOnPictureLoss(PRtcRtpTransceiver, UINT64, RtcOnPictureLoss);
 
 /**
  * @brief Frees the previously created transceiver object

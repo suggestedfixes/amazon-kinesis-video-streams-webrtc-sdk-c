@@ -31,7 +31,7 @@ STATUS createTurnConnection(PIceServer pTurnServer, TIMER_QUEUE_HANDLE timerQueu
     pTurnConnection->state = TURN_STATE_NEW;
     pTurnConnection->stateTimeoutTime = INVALID_TIMESTAMP_VALUE;
     pTurnConnection->errorStatus = STATUS_SUCCESS;
-    pTurnConnection->timerCallbackId = UINT32_MAX;
+    pTurnConnection->timerCallbackId = MAX_UINT32;
     pTurnConnection->pTurnPacket = NULL;
     pTurnConnection->pTurnChannelBindPacket = NULL;
     pTurnConnection->pConnectionListener = pConnectionListener;
@@ -90,8 +90,8 @@ STATUS freeTurnConnection(PTurnConnection* ppTurnConnection)
 
     pTurnConnection = *ppTurnConnection;
 
-    timerCallbackId = ATOMIC_EXCHANGE(&pTurnConnection->timerCallbackId, UINT32_MAX);
-    if (timerCallbackId != UINT32_MAX) {
+    timerCallbackId = ATOMIC_EXCHANGE(&pTurnConnection->timerCallbackId, MAX_UINT32);
+    if (timerCallbackId != MAX_UINT32) {
         CHK_LOG_ERR(timerQueueCancelTimer(pTurnConnection->timerQueueHandle, (UINT32) timerCallbackId, (UINT64) pTurnConnection));
     }
 
@@ -617,7 +617,7 @@ STATUS turnConnectionAddPeer(PTurnConnection pTurnConnection, PKvsIpAddress pPee
 
     CHK(pTurnConnection != NULL && pPeerAddress != NULL, STATUS_NULL_ARG);
     CHK(pTurnConnection->turnServer.ipAddress.family == pPeerAddress->family, STATUS_INVALID_ARG);
-    CHECK_EXT(IS_IPV4_ADDR(pPeerAddress), "Only IPv4 is supported right now");
+    CHK_WARN(IS_IPV4_ADDR(pPeerAddress), retStatus, "Drop IPv6 turn peer because only IPv4 turn peer is supported right now");
 
     MUTEX_LOCK(pTurnConnection->lock);
     locked = TRUE;
@@ -748,8 +748,8 @@ STATUS turnConnectionStart(PTurnConnection pTurnConnection)
     MUTEX_UNLOCK(pTurnConnection->lock);
     locked = FALSE;
 
-    timerCallbackId = ATOMIC_EXCHANGE(&pTurnConnection->timerCallbackId, UINT32_MAX);
-    if (timerCallbackId != UINT32_MAX) {
+    timerCallbackId = ATOMIC_EXCHANGE(&pTurnConnection->timerCallbackId, MAX_UINT32);
+    if (timerCallbackId != MAX_UINT32) {
         CHK_STATUS(timerQueueCancelTimer(pTurnConnection->timerQueueHandle, (UINT32) timerCallbackId, (UINT64) pTurnConnection));
     }
 
@@ -1326,7 +1326,7 @@ CleanUp:
     if (stopScheduling) {
         retStatus = STATUS_TIMER_QUEUE_STOP_SCHEDULING;
         if (pTurnConnection != NULL) {
-            ATOMIC_STORE(&pTurnConnection->timerCallbackId, UINT32_MAX);
+            ATOMIC_STORE(&pTurnConnection->timerCallbackId, MAX_UINT32);
         }
     }
 

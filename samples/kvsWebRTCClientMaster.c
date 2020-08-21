@@ -16,7 +16,7 @@ INT32 main(INT32 argc, CHAR* argv[])
     signal(SIGINT, sigintHandler);
 #endif
 
-    // do tricketIce by default
+    // do trickleIce by default
     printf("[KVS Master] Using trickleICE by default\n");
     retStatus =
         createSampleConfiguration(argc > 1 ? argv[1] : SAMPLE_CHANNEL_NAME, SIGNALING_CHANNEL_ROLE_TYPE_MASTER, TRUE, TRUE, &pSampleConfiguration);
@@ -109,7 +109,6 @@ CleanUp:
     }
 
     printf("[KVS Master] Cleaning up....\n");
-
     if (pSampleConfiguration != NULL) {
         // Kick of the termination sequence
         ATOMIC_STORE_BOOL(&pSampleConfiguration->appTerminateFlag, TRUE);
@@ -186,6 +185,7 @@ PVOID sendVideoPackets(PVOID args)
     CHAR filePath[MAX_PATH_LEN + 1];
     STATUS status;
     UINT32 i;
+    UINT64 startTime, lastFrameTime, elapsed;
     MEMSET(&encoderStats, 0x00, SIZEOF(RtcEncoderStats));
 
     if (pSampleConfiguration == NULL) {
@@ -194,6 +194,8 @@ PVOID sendVideoPackets(PVOID args)
     }
 
     frame.presentationTs = 0;
+    startTime = GETTIME();
+    lastFrameTime = startTime;
 
     while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->appTerminateFlag)) {
         fileIndex = fileIndex % NUMBER_OF_H264_FRAME_FILES + 1;
@@ -232,21 +234,35 @@ PVOID sendVideoPackets(PVOID args)
         encoderStats.targetBitrate = 262000;
         frame.presentationTs += SAMPLE_VIDEO_FRAME_DURATION;
 
-        if (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->updatingSampleStreamingSessionList)) {
-            ATOMIC_INCREMENT(&pSampleConfiguration->streamingSessionListReadingThreadCount);
-            for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
-                status = writeFrame(pSampleConfiguration->sampleStreamingSessionList[i]->pVideoRtcRtpTransceiver, &frame);
-                encoderStats.encodeTimeMsec = 4; // update encode time to an arbitrary number to demonstrate stats update
-                updateEncoderStats(pSampleConfiguration->sampleStreamingSessionList[i]->pVideoRtcRtpTransceiver, &encoderStats);
+        MUTEX_LOCK(pSampleConfiguration->sampleConfigurationObjLock);
+        for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
+            status = writeFrame(pSampleConfiguration->sampleStreamingSessionList[i]->pVideoRtcRtpTransceiver, &frame);
+            encoderStats.encodeTimeMsec = 4; // update encode time to an arbitrary number to demonstrate stats update
+            updateEncoderStats(pSampleConfiguration->sampleStreamingSessionList[i]->pVideoRtcRtpTransceiver, &encoderStats);
+            if (status != STATUS_SRTP_NOT_READY_YET) {
                 if (status != STATUS_SUCCESS) {
 #ifdef VERBOSE
-                    printf("writeFrame() failed with 0x%08x", status);
+                    printf("writeFrame() failed with 0x%08x\n", status);
 #endif
+                } else if (pSampleConfiguration->sampleStreamingSessionList[i]->firstFrame) {
+                    pSampleConfiguration->sampleStreamingSessionList[i]->firstFrame = FALSE;
+                    pSampleConfiguration->sampleStreamingSessionList[i]->startUpLatency =
+                        (GETTIME() - pSampleConfiguration->sampleStreamingSessionList[i]->firstSdpMsgReceiveTime) /
+                        HUNDREDS_OF_NANOS_IN_A_MILLISECOND;
+                    printf("Start up latency from offer to first frame: %" PRIu64 "ms\n",
+                           pSampleConfiguration->sampleStreamingSessionList[i]->startUpLatency);
                 }
             }
-            ATOMIC_DECREMENT(&pSampleConfiguration->streamingSessionListReadingThreadCount);
         }
-        THREAD_SLEEP(SAMPLE_VIDEO_FRAME_DURATION);
+        MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
+
+        // Adjust sleep in the case the sleep itself and writeFrame take longer than expected. Since sleep makes sure that the thread
+        // will be paused at least until the given amount, we can assume that there's no too early frame scenario.
+        // Also, it's very unlikely to have a delay greater than SAMPLE_VIDEO_FRAME_DURATION, so the logic assumes that this is always
+        // true for simplicity.
+        elapsed = lastFrameTime - startTime;
+        THREAD_SLEEP(SAMPLE_VIDEO_FRAME_DURATION - elapsed % SAMPLE_VIDEO_FRAME_DURATION);
+        lastFrameTime = GETTIME();
     }
 
 CleanUp:
@@ -302,16 +318,25 @@ PVOID sendAudioPackets(PVOID args)
 
         frame.presentationTs += SAMPLE_AUDIO_FRAME_DURATION;
 
-        if (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->updatingSampleStreamingSessionList)) {
-            ATOMIC_INCREMENT(&pSampleConfiguration->streamingSessionListReadingThreadCount);
-            for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
-                status = writeFrame(pSampleConfiguration->sampleStreamingSessionList[i]->pAudioRtcRtpTransceiver, &frame);
+        MUTEX_LOCK(pSampleConfiguration->sampleConfigurationObjLock);
+        for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
+            status = writeFrame(pSampleConfiguration->sampleStreamingSessionList[i]->pAudioRtcRtpTransceiver, &frame);
+            if (status != STATUS_SRTP_NOT_READY_YET) {
                 if (status != STATUS_SUCCESS) {
-                    printf("writeFrame failed with 0x%08x", status);
+#ifdef VERBOSE
+                    printf("writeFrame() failed with 0x%08x\n", status);
+#endif
+                } else if (pSampleConfiguration->sampleStreamingSessionList[i]->firstFrame) {
+                    pSampleConfiguration->sampleStreamingSessionList[i]->firstFrame = FALSE;
+                    pSampleConfiguration->sampleStreamingSessionList[i]->startUpLatency =
+                        (GETTIME() - pSampleConfiguration->sampleStreamingSessionList[i]->firstSdpMsgReceiveTime) /
+                        HUNDREDS_OF_NANOS_IN_A_MILLISECOND;
+                    printf("Start up latency from offer to first frame: %" PRIu64 "ms\n",
+                           pSampleConfiguration->sampleStreamingSessionList[i]->startUpLatency);
                 }
             }
-            ATOMIC_DECREMENT(&pSampleConfiguration->streamingSessionListReadingThreadCount);
         }
+        MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
         THREAD_SLEEP(SAMPLE_AUDIO_FRAME_DURATION);
     }
 
