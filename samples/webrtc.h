@@ -10,10 +10,10 @@ extern "C" {
 #include "../src/source/Include_i.h"
 #include <com/amazonaws/kinesis/video/webrtcclient/Include.h>
 
-#define NUMBER_OF_H264_FRAME_FILES 403
+#define NUMBER_OF_H264_FRAME_FILES 1500
 #define NUMBER_OF_OPUS_FRAME_FILES 618
-#define DEFAULT_FPS_VALUE 20
-#define DEFAULT_MAX_CONCURRENT_STREAMING_SESSION 100
+#define DEFAULT_FPS_VALUE 25
+#define DEFAULT_MAX_CONCURRENT_STREAMING_SESSION 20
 
 #define SAMPLE_MASTER_CLIENT_ID "ProducerMaster"
 #define SAMPLE_VIEWER_CLIENT_ID "ConsumerViewer"
@@ -27,6 +27,9 @@ extern "C" {
 
 #define CA_CERT_PEM_FILE_EXTENSION ".pem"
 
+
+#define FILE_LOGGING_BUFFER_SIZE (100 * 1024)
+#define MAX_NUMBER_OF_LOG_FILES  5
 #define APP_RECEIVE_VIDEO_AUDIO TRUE
 #define APP_DATA_TRANSFER TRUE
 #define APP_TRICKLE_ICE TRUE
@@ -89,6 +92,7 @@ typedef struct {
     UINT64 customData;
     PSampleStreamingSession sampleStreamingSessionList[DEFAULT_MAX_CONCURRENT_STREAMING_SESSION];
     UINT32 streamingSessionCount;
+    UINT32 iceUriCount;
     SignalingClientCallbacks signalingClientCallbacks;
     SignalingClientInfo clientInfo;
     RtcConfiguration rtcConfig;
@@ -146,6 +150,7 @@ VOID onDataChannel(UINT64, PRtcDataChannel);
 VOID onConnectionStateChange(UINT64, RTC_PEER_CONNECTION_STATE);
 STATUS sessionCleanupWait(PSampleConfiguration);
 STATUS awaitGetIceConfigInfoCount(SIGNALING_CLIENT_HANDLE, PUINT32);
+STATUS logSignalingClientStats(PSignalingClientMetrics);
 STATUS genCerts(PSampleConfiguration pConfig);
 VOID genRandomId();
 VOID std2fileLogger(PVOID);

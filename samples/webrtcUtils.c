@@ -29,7 +29,7 @@ void setMainstream(PSampleStreamingSession pSession, BOOL mainstream)
 
 VOID onDataChannelMessage(UINT64 customData, PRtcDataChannel pDataChannel, BOOL isBinary, PBYTE pMessage, UINT32 pMessageLen)
 {
-    PSampleStreamingSession pSession = (PSampleStreamingSession)customData;
+    PSampleStreamingSession pSession = (PSampleStreamingSession) customData;
     if (isBinary) {
         DLOGD("DataChannel Binary Message");
     } else {
@@ -51,12 +51,11 @@ VOID onDataChannel(UINT64 customData, PRtcDataChannel pRtcDataChannel)
 
 VOID onConnectionStateChange(UINT64 customData, RTC_PEER_CONNECTION_STATE newState)
 {
-    PSampleStreamingSession pSampleStreamingSession = (PSampleStreamingSession)customData;
+    PSampleStreamingSession pSampleStreamingSession = (PSampleStreamingSession) customData;
 
     DLOGI("New connection state %u", newState);
 
-    if (newState == RTC_PEER_CONNECTION_STATE_FAILED ||
-        newState == RTC_PEER_CONNECTION_STATE_CLOSED ||
+    if (newState == RTC_PEER_CONNECTION_STATE_FAILED || newState == RTC_PEER_CONNECTION_STATE_CLOSED ||
         newState == RTC_PEER_CONNECTION_STATE_DISCONNECTED) {
         ATOMIC_STORE_BOOL(&pSampleStreamingSession->terminateFlag, TRUE);
         CVAR_BROADCAST(pSampleStreamingSession->pSampleConfiguration->cvar);
@@ -66,7 +65,7 @@ VOID onConnectionStateChange(UINT64 customData, RTC_PEER_CONNECTION_STATE newSta
 STATUS viewerMessageReceived(UINT64 customData, PReceivedSignalingMessage pReceivedSignalingMessage)
 {
     STATUS retStatus = STATUS_SUCCESS;
-    PSampleConfiguration pSampleConfiguration = (PSampleConfiguration)customData;
+    PSampleConfiguration pSampleConfiguration = (PSampleConfiguration) customData;
     PSampleStreamingSession pSampleStreamingSession = NULL;
     BOOL locked = FALSE;
 
@@ -83,18 +82,17 @@ STATUS viewerMessageReceived(UINT64 customData, PReceivedSignalingMessage pRecei
     locked = FALSE;
 
     switch (pReceivedSignalingMessage->signalingMessage.messageType) {
-    case SIGNALING_MESSAGE_TYPE_OFFER:
-        DLOGE("Unexpected message SIGNALING_MESSAGE_TYPE_OFFER \n");
-        break;
-    case SIGNALING_MESSAGE_TYPE_ICE_CANDIDATE:
-        CHK_STATUS(handleRemoteCandidate(pSampleStreamingSession, &pReceivedSignalingMessage->signalingMessage));
-        break;
-    case SIGNALING_MESSAGE_TYPE_ANSWER:
-        CHK_STATUS(handleAnswer(pSampleConfiguration, pSampleStreamingSession,
-            &pReceivedSignalingMessage->signalingMessage));
-        break;
-    default:
-        DLOGW("Unknown message type %u", pReceivedSignalingMessage->signalingMessage.messageType);
+        case SIGNALING_MESSAGE_TYPE_OFFER:
+            DLOGE("Unexpected message SIGNALING_MESSAGE_TYPE_OFFER \n");
+            break;
+        case SIGNALING_MESSAGE_TYPE_ICE_CANDIDATE:
+            CHK_STATUS(handleRemoteCandidate(pSampleStreamingSession, &pReceivedSignalingMessage->signalingMessage));
+            break;
+        case SIGNALING_MESSAGE_TYPE_ANSWER:
+            CHK_STATUS(handleAnswer(pSampleConfiguration, pSampleStreamingSession, &pReceivedSignalingMessage->signalingMessage));
+            break;
+        default:
+            DLOGW("Unknown message type %u", pReceivedSignalingMessage->signalingMessage.messageType);
     }
 
 CleanUp:
@@ -123,7 +121,7 @@ STATUS signalingClientStateChanged(UINT64 customData, SIGNALING_CLIENT_STATE sta
 
 STATUS signalingClientError(UINT64 customData, STATUS status, PCHAR msg, UINT32 msgLen)
 {
-    PSampleConfiguration pSampleConfiguration = (PSampleConfiguration)customData;
+    PSampleConfiguration pSampleConfiguration = (PSampleConfiguration) customData;
 
     DLOGW("Signaling client generated an error 0x%08x - '%.*s'", status, msgLen, msg);
 
@@ -139,7 +137,7 @@ STATUS signalingClientError(UINT64 customData, STATUS status, PCHAR msg, UINT32 
 STATUS masterMessageReceived(UINT64 customData, PReceivedSignalingMessage pReceivedSignalingMessage)
 {
     STATUS retStatus = STATUS_SUCCESS;
-    PSampleConfiguration pSampleConfiguration = (PSampleConfiguration)customData;
+    PSampleConfiguration pSampleConfiguration = (PSampleConfiguration) customData;
     PSampleStreamingSession pSampleStreamingSession = NULL;
     UINT32 i;
     BOOL locked = FALSE;
@@ -159,42 +157,33 @@ STATUS masterMessageReceived(UINT64 customData, PReceivedSignalingMessage pRecei
     }
 
     if (pSampleStreamingSession == NULL) {
-        CHK_WARN(pSampleConfiguration->streamingSessionCount < ARRAY_SIZE(pSampleConfiguration->sampleStreamingSessionList),
-            retStatus, "Dropping signalling message from peer %s since maximum simultaneous streaming session of %u is reached",
-            pReceivedSignalingMessage->signalingMessage.peerClientId, ARRAY_SIZE(pSampleConfiguration->sampleStreamingSessionList));
+        CHK_WARN(pSampleConfiguration->streamingSessionCount < ARRAY_SIZE(pSampleConfiguration->sampleStreamingSessionList), retStatus,
+                 "Dropping signalling message from peer %s since maximum simultaneous streaming session of %u is reached",
+                 pReceivedSignalingMessage->signalingMessage.peerClientId, ARRAY_SIZE(pSampleConfiguration->sampleStreamingSessionList));
 
         DLOGD("Creating new streaming session for peer %s", pReceivedSignalingMessage->signalingMessage.peerClientId);
-        CHK_STATUS(createSampleStreamingSession(pSampleConfiguration,
-            pReceivedSignalingMessage->signalingMessage.peerClientId,
-            TRUE,
-            &pSampleStreamingSession));
+        CHK_STATUS(createSampleStreamingSession(pSampleConfiguration, pReceivedSignalingMessage->signalingMessage.peerClientId, TRUE,
+                                                &pSampleStreamingSession));
         pSampleStreamingSession->firstSdpMsgReceiveTime = GETTIME();
         pSampleConfiguration->sampleStreamingSessionList[pSampleConfiguration->streamingSessionCount++] = pSampleStreamingSession;
     }
 
-    MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
-    locked = FALSE;
-
     switch (pReceivedSignalingMessage->signalingMessage.messageType) {
-    case SIGNALING_MESSAGE_TYPE_OFFER:
+        case SIGNALING_MESSAGE_TYPE_OFFER:
             if (ATOMIC_COMPARE_EXCHANGE_BOOL(&pSampleStreamingSession->sdpOfferAnswerExchanged, &expected, TRUE)) {
-                CHK_STATUS(handleOffer(pSampleConfiguration,
-                                       pSampleStreamingSession,
-                                       &pReceivedSignalingMessage->signalingMessage));
+                CHK_STATUS(handleOffer(pSampleConfiguration, pSampleStreamingSession, &pReceivedSignalingMessage->signalingMessage));
             } else {
-                DLOGD("Offer already received, ignore new offer from client id %s",
-                      pReceivedSignalingMessage->signalingMessage.peerClientId);
+                DLOGD("Offer already received, ignore new offer from client id %s", pReceivedSignalingMessage->signalingMessage.peerClientId);
             }
             break;
-
-    case SIGNALING_MESSAGE_TYPE_ICE_CANDIDATE:
-        CHK_STATUS(handleRemoteCandidate(pSampleStreamingSession, &pReceivedSignalingMessage->signalingMessage));
-        break;
-    case SIGNALING_MESSAGE_TYPE_ANSWER:
-        DLOGE("Unexpected message SIGNALING_MESSAGE_TYPE_ANSWER \n");
-        break;
-    default:
-        DLOGW("Unknown message type %u", pReceivedSignalingMessage->signalingMessage.messageType);
+        case SIGNALING_MESSAGE_TYPE_ICE_CANDIDATE:
+            CHK_STATUS(handleRemoteCandidate(pSampleStreamingSession, &pReceivedSignalingMessage->signalingMessage));
+            break;
+        case SIGNALING_MESSAGE_TYPE_ANSWER:
+            DLOGE("Unexpected message SIGNALING_MESSAGE_TYPE_ANSWER \n");
+            break;
+        default:
+            DLOGW("Unknown message type %u", pReceivedSignalingMessage->signalingMessage.messageType);
     }
 
 CleanUp:
@@ -207,8 +196,7 @@ CleanUp:
     return retStatus;
 }
 
-STATUS handleAnswer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSession pSampleStreamingSession,
-    PSignalingMessage pSignalingMessage)
+STATUS handleAnswer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSession pSampleStreamingSession, PSignalingMessage pSignalingMessage)
 {
     STATUS retStatus = STATUS_SUCCESS;
     RtcSessionDescriptionInit answerSessionDescriptionInit;
@@ -226,8 +214,7 @@ CleanUp:
     return retStatus;
 }
 
-STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSession pSampleStreamingSession,
-    PSignalingMessage pSignalingMessage)
+STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSession pSampleStreamingSession, PSignalingMessage pSignalingMessage)
 {
     STATUS retStatus = STATUS_SUCCESS;
     RtcSessionDescriptionInit offerSessionDescriptionInit;
@@ -264,29 +251,27 @@ STATUS handleOffer(PSampleConfiguration pSampleConfiguration, PSampleStreamingSe
         DLOGD("Candidate collection done for non trickle ice");
         // get the latest local description once candidate gathering is done
         CHK_STATUS(peerConnectionGetCurrentLocalDescription(pSampleStreamingSession->pPeerConnection,
-            &pSampleStreamingSession->answerSessionDescriptionInit));
+                                                            &pSampleStreamingSession->answerSessionDescriptionInit));
     }
 
     CHK_STATUS(respondWithAnswer(pSampleStreamingSession));
     DLOGD("time taken to send answer %" PRIu64 " ms",
-        (GETTIME() - pSampleStreamingSession->firstSdpMsgReceiveTime) / HUNDREDS_OF_NANOS_IN_A_MILLISECOND);
+          (GETTIME() - pSampleStreamingSession->firstSdpMsgReceiveTime) / HUNDREDS_OF_NANOS_IN_A_MILLISECOND);
     if (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->mediaThreadStarted) || !IS_VALID_TID_VALUE(pSampleConfiguration->videoSenderTid)) {
         ATOMIC_STORE_BOOL(&pSampleConfiguration->mediaThreadStarted, TRUE);
         if (pSampleConfiguration->videoSource != NULL) {
-            THREAD_CREATE(&pSampleConfiguration->videoSenderTid, pSampleConfiguration->videoSource,
-                (PVOID)pSampleConfiguration);
+            THREAD_CREATE(&pSampleConfiguration->videoSenderTid, pSampleConfiguration->videoSource, (PVOID) pSampleConfiguration);
         }
 
         if (pSampleConfiguration->audioSource != NULL) {
-            THREAD_CREATE(&pSampleConfiguration->audioSenderTid, pSampleConfiguration->audioSource,
-                (PVOID)pSampleConfiguration);
+            THREAD_CREATE(&pSampleConfiguration->audioSenderTid, pSampleConfiguration->audioSource, (PVOID) pSampleConfiguration);
         }
     }
 
     // The audio video receive routine should be per streaming session
     if (pSampleConfiguration->receiveAudioVideoSource != NULL) {
         THREAD_CREATE(&pSampleStreamingSession->receiveAudioVideoSenderTid, pSampleConfiguration->receiveAudioVideoSource,
-            (PVOID)pSampleStreamingSession);
+                      (PVOID) pSampleStreamingSession);
     }
 
 CleanUp:
@@ -312,7 +297,7 @@ STATUS respondWithAnswer(PSampleStreamingSession pSampleStreamingSession)
     message.version = SIGNALING_MESSAGE_CURRENT_VERSION;
     message.messageType = SIGNALING_MESSAGE_TYPE_ANSWER;
     STRCPY(message.peerClientId, pSampleStreamingSession->peerId);
-    message.payloadLen = (UINT32)STRLEN(message.payload);
+    message.payloadLen = (UINT32) STRLEN(message.payload);
     message.correlationId[0] = '\0';
 
     retStatus = signalingClientSendMessageSync(pSampleStreamingSession->pSampleConfiguration->signalingClientHandle, &message);
@@ -326,7 +311,7 @@ CleanUp:
 VOID onIceCandidateHandler(UINT64 customData, PCHAR candidateJson)
 {
     STATUS retStatus = STATUS_SUCCESS;
-    PSampleStreamingSession pSampleStreamingSession = (PSampleStreamingSession)customData;
+    PSampleStreamingSession pSampleStreamingSession = (PSampleStreamingSession) customData;
     SignalingMessage message;
 
     CHK(pSampleStreamingSession != NULL, STATUS_NULL_ARG);
@@ -335,13 +320,11 @@ VOID onIceCandidateHandler(UINT64 customData, PCHAR candidateJson)
         DLOGD("ice candidate gathering finished");
         ATOMIC_STORE_BOOL(&pSampleStreamingSession->candidateGatheringDone, TRUE);
         CVAR_BROADCAST(pSampleStreamingSession->pSampleConfiguration->cvar);
-
-    } else if (pSampleStreamingSession->pSampleConfiguration->trickleIce &&
-            ATOMIC_LOAD_BOOL(&pSampleStreamingSession->peerIdReceived)) {
+    } else if (pSampleStreamingSession->pSampleConfiguration->trickleIce && ATOMIC_LOAD_BOOL(&pSampleStreamingSession->peerIdReceived)) {
         message.version = SIGNALING_MESSAGE_CURRENT_VERSION;
         message.messageType = SIGNALING_MESSAGE_TYPE_ICE_CANDIDATE;
         STRCPY(message.peerClientId, pSampleStreamingSession->peerId);
-        message.payloadLen = (UINT32)STRLEN(candidateJson);
+        message.payloadLen = (UINT32) STRLEN(candidateJson);
         STRCPY(message.payload, candidateJson);
         message.correlationId[0] = '\0';
         CHK_STATUS(signalingClientSendMessageSync(pSampleStreamingSession->pSampleConfiguration->signalingClientHandle, &message));
@@ -359,6 +342,7 @@ STATUS initializePeerConnection(PSampleConfiguration pSampleConfiguration, PRtcP
     UINT32 i, j, iceConfigCount, uriCount;
     PIceConfigInfo pIceConfigInfo;
     const UINT32 maxTurnServer = 1;
+    uriCount = 0;
 
     CHK(pSampleConfiguration != NULL && ppRtcPeerConnection != NULL, STATUS_NULL_ARG);
 
@@ -394,11 +378,34 @@ STATUS initializePeerConnection(PSampleConfiguration pSampleConfiguration, PRtcP
             }
         }
     }
-
+    pSampleConfiguration->iceUriCount = uriCount + 1;
     CHK_STATUS(createPeerConnection(&configuration, ppRtcPeerConnection));
 
 CleanUp:
 
+    return retStatus;
+}
+// Return ICE server stats for a specific streaming session
+STATUS gatherIceServerStats(PSampleStreamingSession pSampleStreamingSession)
+{
+    ENTERS();
+    STATUS retStatus = STATUS_SUCCESS;
+    RtcStats rtcmetrics;
+    UINT32 j = 0;
+    rtcmetrics.requestedTypeOfStats = RTC_STATS_TYPE_ICE_SERVER;
+    for (; j < pSampleStreamingSession->pSampleConfiguration->iceUriCount; j++) {
+        rtcmetrics.rtcStatsObject.iceServerStats.iceServerIndex = j;
+        CHK_STATUS(rtcPeerConnectionGetMetrics(pSampleStreamingSession->pPeerConnection, NULL, &rtcmetrics));
+        DLOGD("ICE Server URL: %s", rtcmetrics.rtcStatsObject.iceServerStats.url);
+        DLOGD("ICE Server port: %d", rtcmetrics.rtcStatsObject.iceServerStats.port);
+        DLOGD("ICE Server protocol: %s", rtcmetrics.rtcStatsObject.iceServerStats.protocol);
+        DLOGD("Total requests sent:%" PRIu64, rtcmetrics.rtcStatsObject.iceServerStats.totalRequestsSent);
+        DLOGD("Total responses received: %" PRIu64, rtcmetrics.rtcStatsObject.iceServerStats.totalResponsesReceived);
+        DLOGD("Total round trip time: %" PRIu64 "ms",
+              rtcmetrics.rtcStatsObject.iceServerStats.totalRoundTripTime / HUNDREDS_OF_NANOS_IN_A_MILLISECOND);
+    }
+CleanUp:
+    LEAVES();
     return retStatus;
 }
 
@@ -429,7 +436,7 @@ CleanUp:
 }
 
 STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, PCHAR peerId, BOOL isMaster,
-    PSampleStreamingSession* ppSampleStreamingSession)
+                                    PSampleStreamingSession* ppSampleStreamingSession)
 {
     STATUS retStatus = STATUS_SUCCESS;
     RtcMediaStreamTrack videoTrack, audioTrack;
