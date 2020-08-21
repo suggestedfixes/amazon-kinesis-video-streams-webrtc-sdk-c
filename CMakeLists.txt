@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake;${CMAKE_MODULE_PATH}")
 include(Utilities)
-project(KinesisVideoWebRTCClient LANGUAGES C)
+project(KinesisVideoWebRTCClient LANGUAGES C CXX)
 
 # User Flags
 option(ADD_MUCLIBC "Add -muclibc c flag" OFF)
@@ -12,6 +12,7 @@ option(BUILD_STATIC_LIBS "Build all libraries statically. (This includes third-p
 option(BUILD_OPENSSL_PLATFORM "If buildng OpenSSL what is the target platform" OFF)
 option(BUILD_LIBSRTP_HOST_PLATFORM "If buildng LibSRTP what is the current platform" OFF)
 option(BUILD_LIBSRTP_DESTINATION_PLATFORM "If buildng LibSRTP what is the destination platform" OFF)
+option(BUILD_SAMPLE "Build available samples" ON)
 
 # Developer Flags
 option(BUILD_TEST "Build the testing tree." OFF)
@@ -86,7 +87,6 @@ if(BUILD_DEPENDENCIES)
 
   set(BUILD_ARGS
       -DBUILD_STATIC_LIBS=${BUILD_STATIC_LIBS}
-      -DOPENSSL_DIR=${OPEN_SRC_INSTALL_PREFIX}
       -DBUILD_LIBSRTP_HOST_PLATFORM=${BUILD_LIBSRTP_HOST_PLATFORM}
       -DBUILD_LIBSRTP_DESTINATION_PLATFORM=${BUILD_LIBSRTP_DESTINATION_PLATFORM}
       -DUSE_OPENSSL=${USE_OPENSSL}
@@ -277,51 +277,181 @@ if (WIN32)
   target_link_libraries(kvsWebrtcClient PRIVATE "Ws2_32" "iphlpapi")
 endif()
 
-add_executable(
-  kvsWebrtcClientMaster
-  ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/Common.c
-  ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/kvsWebRTCClientMaster.c)
-target_link_libraries(kvsWebrtcClientMaster kvsWebrtcClient kvsWebrtcSignalingClient kvspicUtils)
-
-add_executable(
-  kvsWebrtcClientViewer
-  ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/Common.c
-  ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/kvsWebRTCClientViewer.c)
-target_link_libraries(kvsWebrtcClientViewer kvsWebrtcClient kvsWebrtcSignalingClient kvspicUtils)
-
-add_executable(
-        discoverNatBehavior
-        ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/discoverNatBehavior.c)
-target_link_libraries(discoverNatBehavior kvsWebrtcClient)
-
 if(COMPILER_WARNINGS)
   target_compile_options(kvsWebrtcClient PUBLIC -Wall -Werror -pedantic -Wextra -Wno-unknown-warning-option)
   target_compile_options(kvsWebrtcSignalingClient PUBLIC -Wall -Werror -pedantic -Wextra -Wno-unknown-warning-option)
 endif()
 
-if(GST_FOUND)
-  add_executable(
-    kvsWebrtcClientMasterGstSample
-    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/Common.c
-    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/kvsWebRTCClientMasterGstreamerSample.c
-  )
-  target_link_libraries(kvsWebrtcClientMasterGstSample kvsWebrtcClient kvsWebrtcSignalingClient ${GST_SAMPLE_LIBRARIES} kvspicUtils)
+install(TARGETS kvsWebrtcClient kvsWebrtcSignalingClient
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+)
 
-  install(TARGETS kvsWebrtcClientMasterGstSample
+install(DIRECTORY ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/src/include/
+  DESTINATION include
+)
+
+if (BUILD_SAMPLE)
+  add_executable(
+    kvsWebrtcClientMaster
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/Common.c
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/kvsWebRTCClientMaster.c)
+  target_link_libraries(kvsWebrtcClientMaster kvsWebrtcClient kvsWebrtcSignalingClient kvspicUtils)
+
+  add_executable(
+    kvsWebrtcClientViewer
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/Common.c
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/kvsWebRTCClientViewer.c)
+  target_link_libraries(kvsWebrtcClientViewer kvsWebrtcClient kvsWebrtcSignalingClient kvspicUtils)
+
+  add_executable(
+          discoverNatBehavior
+          ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/discoverNatBehavior.c)
+  target_link_libraries(discoverNatBehavior kvsWebrtcClient)
+
+  if(GST_FOUND)
+    add_executable(
+      kvsWebrtcClientMasterGstSample
+      ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/Common.c
+      ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/kvsWebRTCClientMasterGstreamerSample.c
+    )
+    target_link_libraries(kvsWebrtcClientMasterGstSample kvsWebrtcClient kvsWebrtcSignalingClient ${GST_SAMPLE_LIBRARIES} kvspicUtils)
+
+    install(TARGETS kvsWebrtcClientMasterGstSample
+      RUNTIME DESTINATION bin
+    )
+  endif()
+
+  install(TARGETS kvsWebrtcClientMaster kvsWebrtcClientViewer discoverNatBehavior
     RUNTIME DESTINATION bin
   )
+
+  add_executable(
+    webrtc
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/webrtcUtils.c
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/webrtc.c
+  )
+  target_link_libraries(webrtc kvsWebrtcClient kvsWebrtcSignalingClient
+      ${GST_SAMPLE_LIBRARIES}
+      kvspicUtils)
+
+  add_executable(
+    webrtcMonitor
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/webrtcUtils.c
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/webrtcMonitor.c
+  )
+  target_link_libraries(webrtcMonitor kvsWebrtcClient kvsWebrtcSignalingClient ${GST_SAMPLE_LIBRARIES}
+      kvspicUtils)
+
 endif()
 
 if(BUILD_TEST)
   add_subdirectory(tst)
 endif()
 
-install(TARGETS kvsWebrtcClient kvsWebrtcSignalingClient kvsWebrtcClientMaster kvsWebrtcClientViewer discoverNatBehavior
-  RUNTIME DESTINATION bin
-  LIBRARY DESTINATION lib
-  ARCHIVE DESTINATION lib
-  )
+if(FALSE)
 
-install(DIRECTORY ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/src/include/
-  DESTINATION include
-  )
+option(CHIPSET_NAME "" s3l)
+
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR ARM)
+
+if (${CHIPSET_NAME} STREQUAL s3l)
+  set(TOOLS               /usr/local/linaro-armv7ahf-2015.11-gcc5.2)
+  set(CMAKE_C_COMPILER    ${TOOLS}/bin/arm-linux-gnueabihf-gcc)
+  set(CMAKE_CXX_COMPILER  ${TOOLS}/bin/arm-linux-gnueabihf-g++)
+  set(CMAKE_STRIP         ${TOOLS}/bin/arm-linux-gnueabihf-strip)
+  set(CMAKE_AR 		 ${TOOLS}/bin/arm-linux-gnueabihf-ar)
+  set(CMAKE_RANLIB	 ${TOOLS}/bin/arm-linux-gnueabihf-ranlib)
+  set(CMAKE_LD		 ${TOOLS}/bin/arm-linux-gnueabihf-gnu-ld)
+  include_directories(${TOOLS}/include)
+  add_definitions(-march=armv7 -DSOCKLEN_T=socklen_t -DNO_SSTREAM=1 -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64)
+endif(${CHIPSET_NAME} STREQUAL s3l )
+
+if(${CHIPSET_NAME} STREQUAL s5l)
+  set(TOOLS               /usr/local/linaro-aarch64-2017.08-gcc7.1)
+  set(CMAKE_C_COMPILER    ${TOOLS}/bin/aarch64-linux-gnu-gcc)
+  set(CMAKE_CXX_COMPILER  ${TOOLS}/bin/aarch64-linux-gnu-g++)
+  set(CMAKE_STRIP         ${TOOLS}/bin/aarch64-linux-gnu-strip)
+  set(CMAKE_AR 		 ${TOOLS}/bin/aarch64-linux-gnu-ar)
+  set(CMAKE_RANLIB	 ${TOOLS}/bin/aarch64-linux-gnu-ranlib)
+  set(CMAKE_LD		 ${TOOLS}/bin/aarch64-linux-gnu-ld)
+  add_definitions(-DSOCKLEN_T=socklen_t -DNO_SSTREAM=1 -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64)
+endif(${CHIPSET_NAME} STREQUAL s5l)
+
+if(${CHIPSET_NAME} STREQUAL pc)
+  include_directories(/usr/local/include)
+  include_directories(/usr/include)
+  add_definitions(-DSOCKLEN_T=socklen_t -DNO_SSTREAM=1 -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64)
+endif()
+add_definitions(-O3 -g -fdata-sections -ffunction-sections -fpermissive)
+
+set(CPP_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
+set(LIVE555_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cpp/addons/live)
+
+include_directories(${LIVE555_PATH}/src)
+include_directories(${LIVE555_PATH}/include)
+include_directories(${LIVE555_PATH}/liveMedia/include)
+include_directories(${LIVE555_PATH}/groupsock/include)
+include_directories(${LIVE555_PATH}/UsageEnvironment/include)
+include_directories(${LIVE555_PATH}/BasicUsageEnvironment/include)
+include_directories(${LIVE555_PATH}/testProgs/include)
+
+link_directories(${LIVE555_PATH}/liveMedia)
+link_directories(${LIVE555_PATH}/groupsock)
+link_directories(${LIVE555_PATH}/UsageEnvironment)
+link_directories(${LIVE555_PATH}/BasicUsageEnvironment)
+link_directories(${LIVE555_PATH}/testProgs)
+
+file(
+    GLOB
+    LIVE_MEDIA_HEADERS
+    "${OPENSSL_INCLUDE_DIR}"
+    "${LIVE555_PATH}/liveMedia/include/*.h"
+    "${LIVE555_PATH}/liveMedia/include/*.hh"
+    "${LIVE555_PATH}/groupsock/include/*.h"
+    "${LIVE555_PATH}/groupsock/include/*.hh"
+    "${LIVE555_PATH}/UsageEnvironment/include/*.hh"
+    "${LIVE555_PATH}/BasicUsageEnvironment/include/*.hh"
+)
+
+file(
+    GLOB
+    LIVE_MEDIA_SRC
+    "${LIVE555_PATH}/liveMedia/*.c"
+    "${LIVE555_PATH}/liveMedia/*.cpp"
+    "${LIVE555_PATH}/groupsock/*.c"
+    "${LIVE555_PATH}/groupsock/*.cpp"
+    "${LIVE555_PATH}/BasicUsageEnvironment/*.cpp"
+    "${LIVE555_PATH}/UsageEnvironment/*.cpp"
+)
+
+find_package(OpenSSL REQUIRED)
+
+add_library(liveMedia STATIC ${LIVE_MEDIA_HEADERS} ${LIVE_MEDIA_SRC}
+          ${OPENSSL_SSL_LIBRARY}
+          ${OPENSSL_CRYPTO_LIBRARY}
+    )
+
+include_directories(${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples)
+
+add_executable(
+    webrtc_cpp
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/webrtc.h
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/webrtcUtils.c
+    ${CPP_PATH}/src/webrtc.cpp
+    ${CPP_PATH}/src/MemorySink.cpp
+    ${CPP_PATH}/src/WebRTCRTSPClient.cpp
+    ${CPP_PATH}/src/StreamClientState.cpp
+)
+
+target_link_libraries(
+    webrtc_cpp
+    liveMedia
+    kvsWebrtcClient 
+    kvsWebrtcSignalingClient
+    kvspicUtils
+    ${OPENSSL_SSL_LIBRARY}
+    ${OPENSSL_CRYPTO_LIBRARY}
+)
+endif()
