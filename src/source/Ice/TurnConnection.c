@@ -220,7 +220,7 @@ STATUS turnConnectionHandleStun(PTurnConnection pTurnConnection, PBYTE pBuffer, 
         case STUN_PACKET_TYPE_ALLOCATE_SUCCESS_RESPONSE:
             /* If shutdown has been initiated, ignore the allocation response */
             CHK(!ATOMIC_LOAD(&pTurnConnection->stopTurnConnection), retStatus);
-            CHK_STATUS(deserializeStunPacket(pBuffer, bufferLen, pTurnConnection->longTermKey, MD5_DIGEST_LENGTH, &pStunPacket));
+            CHK_STATUS(deserializeStunPacket(pBuffer, bufferLen, pTurnConnection->longTermKey, KVS_MD5_DIGEST_LENGTH, &pStunPacket));
             CHK_STATUS(getStunAttribute(pStunPacket, STUN_ATTRIBUTE_TYPE_XOR_RELAYED_ADDRESS, &pStunAttr));
             CHK_WARN(pStunAttr != NULL, retStatus, "No relay address attribute found in TURN allocate response. Dropping Packet");
             CHK_STATUS(getStunAttribute(pStunPacket, STUN_ATTRIBUTE_TYPE_LIFETIME, (PStunAttributeHeader*) &pStunAttributeLifetime));
@@ -249,7 +249,7 @@ STATUS turnConnectionHandleStun(PTurnConnection pTurnConnection, PBYTE pBuffer, 
             break;
 
         case STUN_PACKET_TYPE_REFRESH_SUCCESS_RESPONSE:
-            CHK_STATUS(deserializeStunPacket(pBuffer, bufferLen, pTurnConnection->longTermKey, MD5_DIGEST_LENGTH, &pStunPacket));
+            CHK_STATUS(deserializeStunPacket(pBuffer, bufferLen, pTurnConnection->longTermKey, KVS_MD5_DIGEST_LENGTH, &pStunPacket));
             CHK_STATUS(getStunAttribute(pStunPacket, STUN_ATTRIBUTE_TYPE_LIFETIME, (PStunAttributeHeader*) &pStunAttributeLifetime));
             CHK_WARN(pStunAttributeLifetime != NULL, retStatus, "No lifetime attribute found in TURN refresh response. Dropping Packet");
 
@@ -362,7 +362,7 @@ STATUS turnConnectionHandleStunError(PTurnConnection pTurnConnection, PBYTE pBuf
     }
 
     if (pTurnConnection->credentialObtained) {
-        retStatus = deserializeStunPacket(pBuffer, bufferLen, pTurnConnection->longTermKey, MD5_DIGEST_LENGTH, &pStunPacket);
+        retStatus = deserializeStunPacket(pBuffer, bufferLen, pTurnConnection->longTermKey, KVS_MD5_DIGEST_LENGTH, &pStunPacket);
     }
     /* if deserializing with password didnt work, try deserialize without password again */
     if (!pTurnConnection->credentialObtained || STATUS_FAILED(retStatus)) {
@@ -617,7 +617,7 @@ STATUS turnConnectionAddPeer(PTurnConnection pTurnConnection, PKvsIpAddress pPee
 
     CHK(pTurnConnection != NULL && pPeerAddress != NULL, STATUS_NULL_ARG);
     CHK(pTurnConnection->turnServer.ipAddress.family == pPeerAddress->family, STATUS_INVALID_ARG);
-    CHECK_EXT(IS_IPV4_ADDR(pPeerAddress), "Only IPv4 is supported right now");
+    CHK_WARN(IS_IPV4_ADDR(pPeerAddress), retStatus, "Drop IPv6 turn peer because only IPv4 turn peer is supported right now");
 
     MUTEX_LOCK(pTurnConnection->lock);
     locked = TRUE;
@@ -1339,13 +1339,13 @@ STATUS turnConnectionGetLongTermKey(PCHAR username, PCHAR realm, PCHAR password,
     CHAR stringBuffer[STUN_MAX_USERNAME_LEN + MAX_ICE_CONFIG_CREDENTIAL_LEN + STUN_MAX_REALM_LEN + 2]; // 2 for two ":" between each value
 
     CHK(username != NULL && realm != NULL && password != NULL && pBuffer != NULL, STATUS_NULL_ARG);
-    CHK(username[0] != '\0' && realm[0] != '\0' && password[0] != '\0' && bufferLen >= MD5_DIGEST_LENGTH, STATUS_INVALID_ARG);
+    CHK(username[0] != '\0' && realm[0] != '\0' && password[0] != '\0' && bufferLen >= KVS_MD5_DIGEST_LENGTH, STATUS_INVALID_ARG);
     CHK((STRLEN(username) + STRLEN(realm) + STRLEN(password)) <= ARRAY_SIZE(stringBuffer) - 2, STATUS_INVALID_ARG);
 
     SPRINTF(stringBuffer, "%s:%s:%s", username, realm, password);
 
     // TODO: Return back the error check
-    MD5(((PBYTE) stringBuffer), (STRLEN(stringBuffer)), (pBuffer));
+    KVS_MD5_DIGEST((PBYTE) stringBuffer, STRLEN(stringBuffer), pBuffer);
 
 CleanUp:
 
