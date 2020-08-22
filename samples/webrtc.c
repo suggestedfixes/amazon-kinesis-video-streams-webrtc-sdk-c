@@ -87,7 +87,7 @@ VOID cleanGst(GMainLoop* loop, GstElement* pipeline, GstBus* bus,
 GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
 {
     GstBuffer* buffer;
-    BOOL isHeader, isDroppable, delta;
+    BOOL isDroppable, delta;
     GstFlowReturn ret = GST_FLOW_OK;
     GstSample* sample = NULL;
     GstMapInfo info;
@@ -106,9 +106,10 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
     sample = gst_app_sink_pull_sample(GST_APP_SINK(sink));
 
     buffer = gst_sample_get_buffer(sample);
-
-    isHeader = GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_HEADER);
-    isDroppable = GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_CORRUPTED) || GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DECODE_ONLY) || (GST_BUFFER_FLAGS(buffer) == GST_BUFFER_FLAG_DISCONT) || (GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DISCONT) && GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DELTA_UNIT)) || (isHeader && (!GST_BUFFER_PTS_IS_VALID(buffer) || !GST_BUFFER_DTS_IS_VALID(buffer)));
+    isDroppable = GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_CORRUPTED) || GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DECODE_ONLY) ||
+        (GST_BUFFER_FLAGS(buffer) == GST_BUFFER_FLAG_DISCONT) ||
+        (GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DISCONT) && GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DELTA_UNIT)) ||
+        !GST_BUFFER_PTS_IS_VALID(buffer);
 
     if (!isDroppable) {
         delta = GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DELTA_UNIT);
@@ -116,7 +117,6 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
         frame.flags = delta ? FRAME_FLAG_NONE : FRAME_FLAG_KEY_FRAME;
 
         // convert from segment timestamp to running time in live mode.
-
         segment = gst_sample_get_segment(sample);
         buf_pts = gst_segment_to_running_time(segment, GST_FORMAT_TIME, buffer->pts);
         if (!GST_CLOCK_TIME_IS_VALID(buf_pts)) {
@@ -129,13 +129,10 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
         frame.trackId = trackid;
         frame.duration = 0;
         frame.version = FRAME_CURRENT_VERSION;
-        frame.size = (UINT32)info.size;
-        frame.frameData = (PBYTE)info.data;
+        frame.size = (UINT32) info.size;
+        frame.frameData = (PBYTE) info.data;
 
-        if (!ATOMIC_LOAD_BOOL(
-                &pSampleConfiguration->updatingSampleStreamingSessionList)) {
-            ATOMIC_INCREMENT(
-                &pSampleConfiguration->streamingSessionListReadingThreadCount);
+        MUTEX_LOCK(pSampleConfiguration->sampleConfigurationObjLock);
             for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
                 pSampleStreamingSession = pSampleConfiguration->sampleStreamingSessionList[i];
                 BOOL isMainstream = ATOMIC_LOAD_BOOL(&pSampleStreamingSession->mainstream);
@@ -151,10 +148,8 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
                     }
                 }
             }
-            ATOMIC_DECREMENT(
-                &pSampleConfiguration->streamingSessionListReadingThreadCount);
         }
-    }
+        MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
 
 CleanUp:
 
