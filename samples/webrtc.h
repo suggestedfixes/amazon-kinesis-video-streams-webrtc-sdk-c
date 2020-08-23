@@ -140,6 +140,7 @@ struct __SampleStreamingSession {
     // this is called when the SampleStreamingSession is being freed
     StreamSessionShutdownCallback shutdownCallback;
     UINT64 shutdownCallbackCustomData;
+    PRtcDataChannel pDataChannel;
 };
 
 VOID sigintHandler(INT32);

@@ -1,11 +1,16 @@
 #include <gst/app/gstappsink.h>
 #include <gst/gst.h>
 #include <gst/rtsp/gstrtsptransport.h>
+#include <time.h>
 
 #include "webrtc.h"
 
 extern PSampleConfiguration gSampleConfiguration;
 CHAR appGstStr[APP_GST_STRLEN];
+
+typedef struct _GstCollection {
+    GstElement *appsink, *pipeline, *source, *depay, *filter, *caps;
+} GstCollection;
 
 typedef struct _GstCustomData {
     gboolean is_live;
@@ -64,7 +69,7 @@ static void gstMessageCallback(GstBus* bus, GstMessage* msg,
     }
 }
 
-VOID cleanGst(GMainLoop* loop, GstElement* pipeline, GstBus* bus,
+VOID cleanGst_(GMainLoop* loop, GstElement* pipeline, GstBus* bus,
     GstMessage* msg, BOOL gstCleaned)
 {
     if (!gstCleaned) {
@@ -84,6 +89,29 @@ VOID cleanGst(GMainLoop* loop, GstElement* pipeline, GstBus* bus,
     }
 }
 
+VOID cleanGst(GMainLoop* loop, GstCollection* gc)
+{
+    if (loop != NULL) {
+        g_main_loop_unref(loop);
+    }
+    if (gc->source != NULL) {
+        gst_object_unref(gc->source);
+    }
+    if (gc->depay != NULL) {
+        gst_object_unref(gc->depay);
+    }
+    if (gc->filter != NULL) {
+        gst_object_unref(gc->filter);
+    }
+    if (gc->appsink != NULL) {
+        gst_object_unref(gc->appsink);
+    }
+    if (gc->pipeline != NULL) {
+        gst_element_set_state(gc->pipeline, GST_STATE_NULL);
+        gst_object_unref(gc->pipeline);
+    }
+}
+
 GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
 {
     GstBuffer* buffer = NULL;
@@ -100,7 +128,9 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
     PRtcRtpTransceiver pRtcRtpTransceiver = NULL;
     UINT32 i;
 
-    CHK(pSampleConfiguration != NULL, STATUS_NULL_ARG);
+    if (pSampleConfiguration == NULL) {
+        return ret;
+    }
 
     info.data = NULL;
     sample = gst_app_sink_pull_sample(GST_APP_SINK(sink));
@@ -123,10 +153,12 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
         if (!GST_CLOCK_TIME_IS_VALID(buf_pts)) {
             isDroppable = TRUE;
             DLOGD("Frame contains invalid PTS dropping the frame.");
-            CHK(FALSE, retStatus);
+            return ret;
         }
 
-        CHK(gst_buffer_map(buffer, &info, GST_MAP_READ), retStatus);
+        if (!gst_buffer_map(buffer, &info, GST_MAP_READ)) {
+            return ret;
+        }
 
         frame.trackId = trackid;
         frame.duration = 0;
@@ -162,6 +194,17 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
             }
             if ((trackid == DEFAULT_VIDEO_TRACK_ID && isMainstream) || (trackid == APP_DEFAULT_SUBSTREAM_ID && !isMainstream)) {
                 MUTEX_LOCK(pSampleStreamingSession->sessionLock);
+                if (!delta && pSampleStreamingSession->pDataChannel != NULL) {
+                    CHAR seconds[32];
+                    SPRINTF(seconds, "%lu", time(NULL));
+                    status = dataChannelSend(pSampleStreamingSession->pDataChannel, FALSE, seconds, strlen(seconds));
+
+                    if (STATUS_FAILED(status)) {
+                        DLOGD("dataChannelSend failed with 0x%08x", status);
+                    } else {
+                        DLOGD("dataChannelSend succeeded with 0x%08x", status);
+                    }
+                }
                 pRtcRtpTransceiver = pSampleStreamingSession->pVideoRtcRtpTransceiver;
                 frame.index = (UINT32)ATOMIC_INCREMENT(&pSampleStreamingSession->frameIndex);
                 frame.presentationTs = pSampleStreamingSession->videoTimestamp;
@@ -219,10 +262,6 @@ static void cb_rtsp_pad_created(GstElement* element, GstPad* pad, gpointer data)
     }
     g_free(pad_name);
 }
-
-typedef struct _GstCollection {
-    GstElement *appsink, *pipeline, *source, *depay, *filter, *caps;
-} GstCollection;
 
 void makeGstPipline(PSampleConfiguration pSampleConfiguration, PCHAR rtspsrc, PCHAR srcName, PCHAR sinkName, GCallback callback, GstCollection* gc)
 {
@@ -329,8 +368,8 @@ PVOID sendGstreamerAudioVideo(PVOID args)
         data.loop = g_main_loop_new(NULL, FALSE);
         g_main_loop_run(data.loop);
 
-        cleanGst(NULL, gc0.pipeline, NULL, NULL, FALSE);
-        cleanGst(NULL, gc1.pipeline, NULL, NULL, FALSE);
+        cleanGst(data.loop, &gc0);
+        cleanGst(NULL, &gc1);
     } while (APP_GST_ERR_RECOVERY);
 
 CleanUp:

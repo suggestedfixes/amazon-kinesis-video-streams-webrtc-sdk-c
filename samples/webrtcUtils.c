@@ -44,6 +44,8 @@ VOID onDataChannel(UINT64 customData, PRtcDataChannel pRtcDataChannel)
 {
     DLOGD("New DataChannel has been opened %s \n", pRtcDataChannel->name);
     dataChannelOnMessage(pRtcDataChannel, customData, onDataChannelMessage);
+    PSampleStreamingSession pSession = (PSampleStreamingSession) customData;
+    pSession->pDataChannel = pRtcDataChannel;
 }
 
 VOID onConnectionStateChange(UINT64 customData, RTC_PEER_CONNECTION_STATE newState)
@@ -535,6 +537,7 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
     pSampleStreamingSession->sessionLock = MUTEX_CREATE(TRUE);
     pSampleStreamingSession->firstFrame = TRUE;
     pSampleStreamingSession->startUpLatency = 0;
+    pSampleStreamingSession->pDataChannel = NULL;
 CleanUp:
 
     if (STATUS_FAILED(retStatus) && pSampleStreamingSession != NULL) {
