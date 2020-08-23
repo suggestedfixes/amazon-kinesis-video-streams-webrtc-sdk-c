@@ -86,16 +86,16 @@ VOID cleanGst(GMainLoop* loop, GstElement* pipeline, GstBus* bus,
 
 GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
 {
-    GstBuffer* buffer;
-    BOOL isDroppable, delta;
+    GstBuffer* buffer = NULL;
+    BOOL isDroppable = FALSE, delta = FALSE;
     GstFlowReturn ret = GST_FLOW_OK;
     GstSample* sample = NULL;
     GstMapInfo info;
-    GstSegment* segment;
+    GstSegment* segment = NULL;
     GstClockTime buf_pts;
     Frame frame;
     STATUS retStatus = STATUS_SUCCESS, status;
-    PSampleConfiguration pSampleConfiguration = (PSampleConfiguration)data;
+    PSampleConfiguration pSampleConfiguration = (PSampleConfiguration) data;
     PSampleStreamingSession pSampleStreamingSession = NULL;
     PRtcRtpTransceiver pRtcRtpTransceiver = NULL;
     UINT32 i;
@@ -108,10 +108,11 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
     buffer = gst_sample_get_buffer(sample);
     isDroppable = GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_CORRUPTED) || GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DECODE_ONLY) ||
         (GST_BUFFER_FLAGS(buffer) == GST_BUFFER_FLAG_DISCONT) ||
+        (GST_BUFFER_FLAGS(buffer) == GST_BUFFER_FLAG_DROPPABLE) ||
         (GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DISCONT) && GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DELTA_UNIT)) ||
         !GST_BUFFER_PTS_IS_VALID(buffer);
 
-    if (!isDroppable) {
+    if (TRUE) {
         delta = GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DELTA_UNIT);
 
         frame.flags = delta ? FRAME_FLAG_NONE : FRAME_FLAG_KEY_FRAME;
@@ -120,6 +121,7 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
         segment = gst_sample_get_segment(sample);
         buf_pts = gst_segment_to_running_time(segment, GST_FORMAT_TIME, buffer->pts);
         if (!GST_CLOCK_TIME_IS_VALID(buf_pts)) {
+            isDroppable = TRUE;
             DLOGD("Frame contains invalid PTS dropping the frame.");
             CHK(FALSE, retStatus);
         }
@@ -132,11 +134,34 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
         frame.size = (UINT32) info.size;
         frame.frameData = (PBYTE) info.data;
 
-        MUTEX_LOCK(pSampleConfiguration->sampleConfigurationObjLock);
         for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
             pSampleStreamingSession = pSampleConfiguration->sampleStreamingSessionList[i];
+            if (delta) {
+                // if one of the previous delta frames is corrupted, drop this
+                // delta frame as well
+                if (ATOMIC_LOAD_BOOL(&pSampleStreamingSession->shouldDropDeltaTillKey)) {
+                    continue;
+                }
+            } else {
+                // on keyframe, reset the flag of dropping the reset of delta
+                // flags to false
+                ATOMIC_STORE_BOOL(&pSampleStreamingSession->shouldDropDeltaTillKey, FALSE);
+            }
+            // catch all types of frames
+            if (isDroppable) {
+                ATOMIC_STORE_BOOL(&pSampleStreamingSession->shouldDropDeltaTillKey, TRUE);
+                continue;
+            }
+
             BOOL isMainstream = ATOMIC_LOAD_BOOL(&pSampleStreamingSession->mainstream);
+            BOOL pendingStream = ATOMIC_LOAD_BOOL(&pSampleStreamingSession->pendingStream);
+            // only switch stream at keyframes
+            if (!delta && isMainstream != pendingStream) {
+                ATOMIC_STORE_BOOL(&pSampleStreamingSession->mainstream, pendingStream);
+                isMainstream = pendingStream;
+            }
             if ((trackid == DEFAULT_VIDEO_TRACK_ID && isMainstream) || (trackid == APP_DEFAULT_SUBSTREAM_ID && !isMainstream)) {
+                MUTEX_LOCK(pSampleStreamingSession->sessionLock);
                 pRtcRtpTransceiver = pSampleStreamingSession->pVideoRtcRtpTransceiver;
                 frame.index = (UINT32)ATOMIC_INCREMENT(&pSampleStreamingSession->frameIndex);
                 frame.presentationTs = pSampleStreamingSession->videoTimestamp;
@@ -146,9 +171,9 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
                 if (STATUS_FAILED(status)) {
                     DLOGD("writeFrame failed with 0x%08x", status);
                 }
+                MUTEX_UNLOCK(pSampleStreamingSession->sessionLock);
             }
         }
-        MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
     }
 
 CleanUp:

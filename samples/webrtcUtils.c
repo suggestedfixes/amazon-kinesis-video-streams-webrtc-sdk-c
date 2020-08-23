@@ -19,12 +19,9 @@ VOID sigintHandler(INT32 sigNum)
 
 void setMainstream(PSampleStreamingSession pSession, BOOL mainstream)
 {
-    ATOMIC_STORE_BOOL(&pSession->pSampleConfiguration->updatingSampleStreamingSessionList, TRUE);
-    while (ATOMIC_LOAD(&pSession->pSampleConfiguration->streamingSessionListReadingThreadCount) != 0) {
-        THREAD_SLEEP(10 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND);
-    }
-    ATOMIC_STORE_BOOL(&pSession->mainstream, mainstream);
-    ATOMIC_STORE_BOOL(&pSession->pSampleConfiguration->updatingSampleStreamingSessionList, FALSE);
+    MUTEX_LOCK(pSession->sessionLock);
+    ATOMIC_STORE_BOOL(&pSession->pendingStream, mainstream);
+    MUTEX_UNLOCK(pSession->sessionLock);
 }
 
 VOID onDataChannelMessage(UINT64 customData, PRtcDataChannel pDataChannel, BOOL isBinary, PBYTE pMessage, UINT32 pMessageLen)
@@ -505,6 +502,9 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
 
     ATOMIC_STORE_BOOL(&pSampleStreamingSession->terminateFlag, FALSE);
     ATOMIC_STORE_BOOL(&pSampleStreamingSession->candidateGatheringDone, FALSE);
+    ATOMIC_STORE_BOOL(&pSampleStreamingSession->mainstream, FALSE);
+    ATOMIC_STORE_BOOL(&pSampleStreamingSession->pendingStream, FALSE);
+    ATOMIC_STORE_BOOL(&pSampleStreamingSession->shouldDropDeltaTillKey, FALSE);
 
     CHK_STATUS(initializePeerConnection(pSampleConfiguration, &pSampleStreamingSession->pPeerConnection));
     CHK_STATUS(peerConnectionOnIceCandidate(pSampleStreamingSession->pPeerConnection, (UINT64) pSampleStreamingSession, onIceCandidateHandler));
@@ -532,6 +532,7 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
     STRCPY(audioTrack.trackId, "myAudioTrack");
     CHK_STATUS(addTransceiver(pSampleStreamingSession->pPeerConnection, &audioTrack, NULL, &pSampleStreamingSession->pAudioRtcRtpTransceiver));
 
+    pSampleStreamingSession->sessionLock = MUTEX_CREATE(TRUE);
     pSampleStreamingSession->firstFrame = TRUE;
     pSampleStreamingSession->startUpLatency = 0;
 CleanUp:
@@ -558,6 +559,12 @@ STATUS freeSampleStreamingSession(PSampleStreamingSession* ppSampleStreamingSess
     CHK(pSampleStreamingSession != NULL, retStatus);
 
     DLOGD("Freeing streaming session with peer id: %s ", pSampleStreamingSession->peerId);
+
+    if (IS_VALID_MUTEX_VALUE(pSampleStreamingSession->sessionLock)) {
+        MUTEX_LOCK(pSampleStreamingSession->sessionLock);
+        MUTEX_UNLOCK(pSampleStreamingSession->sessionLock);
+        MUTEX_FREE(pSampleStreamingSession->sessionLock);
+    }
 
     ATOMIC_STORE_BOOL(&pSampleStreamingSession->terminateFlag, TRUE);
 
@@ -962,11 +969,12 @@ STATUS sessionCleanupWait(PSampleConfiguration pSampleConfiguration)
             if (ATOMIC_LOAD_BOOL(&pSampleConfiguration->sampleStreamingSessionList[i]->terminateFlag)) {
                 pSampleStreamingSession = pSampleConfiguration->sampleStreamingSessionList[i];
 
-
                 pSampleConfiguration->streamingSessionCount--;
                 pSampleConfiguration->sampleStreamingSessionList[i] =
                     pSampleConfiguration->sampleStreamingSessionList[pSampleConfiguration->streamingSessionCount];
+
                 CHK_STATUS(freeSampleStreamingSession(&pSampleStreamingSession));
+                CHK_STATUS(genCerts(pSampleConfiguration));
             }
         }
 

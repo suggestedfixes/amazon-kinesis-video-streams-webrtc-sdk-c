@@ -13,7 +13,8 @@ extern "C" {
 #define NUMBER_OF_H264_FRAME_FILES 1500
 #define NUMBER_OF_OPUS_FRAME_FILES 618
 #define DEFAULT_FPS_VALUE 25
-#define DEFAULT_MAX_CONCURRENT_STREAMING_SESSION 20
+// the real limit is 20
+#define DEFAULT_MAX_CONCURRENT_STREAMING_SESSION 100
 
 #define SAMPLE_MASTER_CLIENT_ID "ProducerMaster"
 #define SAMPLE_VIEWER_CLIENT_ID "ConsumerViewer"
@@ -117,6 +118,8 @@ struct __SampleStreamingSession {
     volatile ATOMIC_BOOL candidateGatheringDone;
     volatile ATOMIC_BOOL peerIdReceived;
     volatile ATOMIC_BOOL mainstream;
+    volatile ATOMIC_BOOL pendingStream;
+    volatile ATOMIC_BOOL shouldDropDeltaTillKey;
     volatile ATOMIC_BOOL sdpOfferAnswerExchanged;
     volatile SIZE_T frameIndex;
     PRtcPeerConnection pPeerConnection;
@@ -133,6 +136,7 @@ struct __SampleStreamingSession {
     BOOL firstFrame;
     RtcMetricsHistory rtcMetricsHistory;
 
+    MUTEX sessionLock;
     // this is called when the SampleStreamingSession is being freed
     StreamSessionShutdownCallback shutdownCallback;
     UINT64 shutdownCallbackCustomData;
