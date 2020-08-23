@@ -38,6 +38,10 @@ VOID onDataChannelMessage(UINT64 customData, PRtcDataChannel pDataChannel, BOOL 
     if (strncmp(pMessage, "substream", 9) == 0) {
         setMainstream(pSession, FALSE);
     }
+    if (strncmp(pMessage, "close", 5) == 0) {
+        ATOMIC_STORE_BOOL(&pSession->terminateFlag, TRUE);
+        CVAR_BROADCAST(pSession->pSampleConfiguration->cvar);
+    }
 }
 
 VOID onDataChannel(UINT64 customData, PRtcDataChannel pRtcDataChannel)

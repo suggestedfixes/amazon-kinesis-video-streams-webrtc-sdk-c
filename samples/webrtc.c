@@ -168,6 +168,9 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
 
         for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
             pSampleStreamingSession = pSampleConfiguration->sampleStreamingSessionList[i];
+            if (ATOMIC_LOAD_BOOL(&pSampleStreamingSession->terminateFlag)) {
+                continue;
+            }
             if (delta) {
                 // if one of the previous delta frames is corrupted, drop this
                 // delta frame as well
