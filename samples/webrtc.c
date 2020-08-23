@@ -133,23 +133,23 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
         frame.frameData = (PBYTE) info.data;
 
         MUTEX_LOCK(pSampleConfiguration->sampleConfigurationObjLock);
-            for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
-                pSampleStreamingSession = pSampleConfiguration->sampleStreamingSessionList[i];
-                BOOL isMainstream = ATOMIC_LOAD_BOOL(&pSampleStreamingSession->mainstream);
-                if ((trackid == DEFAULT_VIDEO_TRACK_ID && isMainstream) || (trackid == APP_DEFAULT_SUBSTREAM_ID && !isMainstream)) {
-                    pRtcRtpTransceiver = pSampleStreamingSession->pVideoRtcRtpTransceiver;
-                    frame.index = (UINT32)ATOMIC_INCREMENT(&pSampleStreamingSession->frameIndex);
-                    frame.presentationTs = pSampleStreamingSession->videoTimestamp;
-                    frame.decodingTs = frame.presentationTs;
-                    pSampleStreamingSession->videoTimestamp = buf_pts;
-                    status = writeFrame(pRtcRtpTransceiver, &frame);
-                    if (STATUS_FAILED(status)) {
-                        DLOGD("writeFrame failed with 0x%08x", status);
-                    }
+        for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
+            pSampleStreamingSession = pSampleConfiguration->sampleStreamingSessionList[i];
+            BOOL isMainstream = ATOMIC_LOAD_BOOL(&pSampleStreamingSession->mainstream);
+            if ((trackid == DEFAULT_VIDEO_TRACK_ID && isMainstream) || (trackid == APP_DEFAULT_SUBSTREAM_ID && !isMainstream)) {
+                pRtcRtpTransceiver = pSampleStreamingSession->pVideoRtcRtpTransceiver;
+                frame.index = (UINT32)ATOMIC_INCREMENT(&pSampleStreamingSession->frameIndex);
+                frame.presentationTs = pSampleStreamingSession->videoTimestamp;
+                frame.decodingTs = frame.presentationTs;
+                pSampleStreamingSession->videoTimestamp = buf_pts;
+                status = writeFrame(pRtcRtpTransceiver, &frame);
+                if (STATUS_FAILED(status)) {
+                    DLOGD("writeFrame failed with 0x%08x", status);
                 }
             }
         }
         MUTEX_UNLOCK(pSampleConfiguration->sampleConfigurationObjLock);
+    }
 
 CleanUp:
 
