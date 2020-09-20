@@ -152,12 +152,10 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
         buf_pts = gst_segment_to_running_time(segment, GST_FORMAT_TIME, buffer->pts);
         if (!GST_CLOCK_TIME_IS_VALID(buf_pts)) {
             isDroppable = TRUE;
-            DLOGD("Frame contains invalid PTS dropping the frame.");
-            return ret;
         }
 
         if (!gst_buffer_map(buffer, &info, GST_MAP_READ)) {
-            return ret;
+            isDroppable = TRUE;
         }
 
         frame.trackId = trackid;
@@ -168,26 +166,9 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
 
         for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
             pSampleStreamingSession = pSampleConfiguration->sampleStreamingSessionList[i];
-            if (ATOMIC_LOAD_BOOL(&pSampleStreamingSession->terminateFlag)) {
+            if (pSampleStreamingSession == NULL || ATOMIC_LOAD_BOOL(&pSampleStreamingSession->terminateFlag)) {
                 continue;
             }
-            if (delta) {
-                // if one of the previous delta frames is corrupted, drop this
-                // delta frame as well
-                if (ATOMIC_LOAD_BOOL(&pSampleStreamingSession->shouldDropDeltaTillKey)) {
-                    continue;
-                }
-            } else {
-                // on keyframe, reset the flag of dropping the reset of delta
-                // flags to false
-                ATOMIC_STORE_BOOL(&pSampleStreamingSession->shouldDropDeltaTillKey, FALSE);
-            }
-            // catch all types of frames
-            if (isDroppable) {
-                ATOMIC_STORE_BOOL(&pSampleStreamingSession->shouldDropDeltaTillKey, TRUE);
-                continue;
-            }
-
             BOOL isMainstream = ATOMIC_LOAD_BOOL(&pSampleStreamingSession->mainstream);
             BOOL pendingStream = ATOMIC_LOAD_BOOL(&pSampleStreamingSession->pendingStream);
             // only switch stream at keyframes
@@ -197,6 +178,24 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
             }
             if ((trackid == DEFAULT_VIDEO_TRACK_ID && isMainstream) || (trackid == APP_DEFAULT_SUBSTREAM_ID && !isMainstream)) {
                 MUTEX_LOCK(pSampleStreamingSession->sessionLock);
+                BOOL canWrite = TRUE;
+                // if one of the previous delta frames is corrupted, drop this
+                // delta frame as well
+
+                if (delta && ATOMIC_LOAD_BOOL(&pSampleStreamingSession->shouldDropDeltaTillKey)) {
+                    canWrite = FALSE;
+                } else {
+                    // on keyframe, reset the flag of dropping the reset of delta
+                    // flags to false
+                    ATOMIC_STORE_BOOL(&pSampleStreamingSession->shouldDropDeltaTillKey, FALSE);
+                }
+                // catch all types of frames
+                if (isDroppable) {
+                    ATOMIC_STORE_BOOL(&pSampleStreamingSession->shouldDropDeltaTillKey, TRUE);
+                    canWrite = FALSE;
+                }
+
+                /*
                 if (!delta && pSampleStreamingSession->pDataChannel != NULL) {
                     CHAR seconds[32];
                     SPRINTF(seconds, "%lu", time(NULL));
@@ -208,14 +207,17 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
                         DLOGD("dataChannelSend succeeded with 0x%08x", status);
                     }
                 }
-                pRtcRtpTransceiver = pSampleStreamingSession->pVideoRtcRtpTransceiver;
-                frame.index = (UINT32)ATOMIC_INCREMENT(&pSampleStreamingSession->frameIndex);
-                frame.presentationTs = pSampleStreamingSession->videoTimestamp;
-                frame.decodingTs = frame.presentationTs;
-                pSampleStreamingSession->videoTimestamp = buf_pts;
-                status = writeFrame(pRtcRtpTransceiver, &frame);
-                if (STATUS_FAILED(status)) {
-                    DLOGD("writeFrame failed with 0x%08x", status);
+                */
+                if (canWrite) {
+                    pRtcRtpTransceiver = pSampleStreamingSession->pVideoRtcRtpTransceiver;
+                    frame.index = (UINT32)ATOMIC_INCREMENT(&pSampleStreamingSession->frameIndex);
+                    frame.presentationTs = pSampleStreamingSession->videoTimestamp;
+                    frame.decodingTs = frame.presentationTs;
+                    pSampleStreamingSession->videoTimestamp = buf_pts;
+                    status = writeFrame(pRtcRtpTransceiver, &frame);
+                    if (STATUS_FAILED(status)) {
+                        DLOGD("writeFrame failed with 0x%08x", status);
+                    }
                 }
                 MUTEX_UNLOCK(pSampleStreamingSession->sessionLock);
             }
