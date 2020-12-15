@@ -144,19 +144,12 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 
     switch (pSampleConfiguration->mediaType) {
         case SAMPLE_STREAMING_VIDEO_ONLY:
-            if (pSampleConfiguration->useTestSrc) {
-                pipeline = gst_parse_launch(
-                    "videotestsrc is-live=TRUE ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=30/1 ! "
-                    "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
-                    "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
+            pipeline = gst_parse_launch(
+                    "rtspsrc location=rtsp://127.0.0.1:554/channel1 short-header=TRUE drop-on-latency=TRUE ! rtph264depay ! "
+                    "video/"
+                    "x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! "
+                    "appsink sync=TRUE emit-signals=TRUE name=appsink-video ",
                     &error);
-            } else {
-                pipeline = gst_parse_launch(
-                    "autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=[30/1,10000000/333333] ! "
-                    "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
-                    "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
-                    &error);
-            }
             break;
 
         case SAMPLE_STREAMING_AUDIO_VIDEO:
@@ -257,6 +250,8 @@ VOID onSampleStreamingSessionShutdown(UINT64 customData, PSampleStreamingSession
 PVOID receiveGstreamerAudioVideo(PVOID args)
 {
     STATUS retStatus = STATUS_SUCCESS;
+    return retStatus;
+
     GstElement *pipeline = NULL, *appsrcAudio = NULL;
     GstBus* bus;
     GstMessage* msg;

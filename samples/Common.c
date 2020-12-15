@@ -324,7 +324,7 @@ STATUS initializePeerConnection(PSampleConfiguration pSampleConfiguration, PRtcP
     RtcConfiguration configuration;
     UINT32 i, j, iceConfigCount, uriCount;
     PIceConfigInfo pIceConfigInfo;
-    const UINT32 maxTurnServer = 1;
+    const UINT32 maxTurnServer = 2;
     uriCount = 0;
 
     CHK(pSampleConfiguration != NULL && ppRtcPeerConnection != NULL, STATUS_NULL_ARG);
@@ -338,7 +338,7 @@ STATUS initializePeerConnection(PSampleConfiguration pSampleConfiguration, PRtcP
     configuration.iceTransportPolicy = ICE_TRANSPORT_POLICY_ALL;
 
     // Set the  STUN server
-    SNPRINTF(configuration.iceServers[0].urls, MAX_ICE_CONFIG_URI_LEN, KINESIS_VIDEO_STUN_URL, pSampleConfiguration->channelInfo.pRegion);
+//    SNPRINTF(configuration.iceServers[0].urls, MAX_ICE_CONFIG_URI_LEN, KINESIS_VIDEO_STUN_URL, pSampleConfiguration->channelInfo.pRegion);
 
     if (pSampleConfiguration->useTurn) {
         // Set the URIs from the configuration
@@ -360,16 +360,17 @@ STATUS initializePeerConnection(PSampleConfiguration pSampleConfiguration, PRtcP
                  * It's recommended to not pass too many TURN iceServers to configuration because it will slow down ice gathering in non-trickle mode.
                  */
 
-                STRNCPY(configuration.iceServers[uriCount + 1].urls, pIceConfigInfo->uris[j], MAX_ICE_CONFIG_URI_LEN);
-                STRNCPY(configuration.iceServers[uriCount + 1].credential, pIceConfigInfo->password, MAX_ICE_CONFIG_CREDENTIAL_LEN);
-                STRNCPY(configuration.iceServers[uriCount + 1].username, pIceConfigInfo->userName, MAX_ICE_CONFIG_USER_NAME_LEN);
-
-                uriCount++;
+                if (STRSTR(pIceConfigInfo->uris[j], "transport=tcp") != NULL) {
+                    STRNCPY(configuration.iceServers[uriCount + 0].urls, pIceConfigInfo->uris[j], MAX_ICE_CONFIG_URI_LEN);
+                    STRNCPY(configuration.iceServers[uriCount + 0].credential, pIceConfigInfo->password, MAX_ICE_CONFIG_CREDENTIAL_LEN);
+                    STRNCPY(configuration.iceServers[uriCount + 0].username, pIceConfigInfo->userName, MAX_ICE_CONFIG_USER_NAME_LEN);
+                    uriCount++;
+                }
             }
         }
     }
 
-    pSampleConfiguration->iceUriCount = uriCount + 1;
+    pSampleConfiguration->iceUriCount = uriCount + 0;
     CHK_STATUS(createPeerConnection(&configuration, ppRtcPeerConnection));
 
 CleanUp:
